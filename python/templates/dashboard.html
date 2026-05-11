@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Daily Check{% endblock %}
+
+{% block content %}
+<section class="hero-card mb-4">
+  <div>
+    <div class="eyebrow">{{ current_user.role|upper }}</div>
+    <h1 class="page-title mb-2">
+      {% if current_user.role == "user" %}
+        Checklist của {{ current_user.name }}
+      {% elif current_user.role == "manager" %}
+        Dashboard quản lý checklist
+      {% else %}
+        Dashboard quản trị checklist
+      {% endif %}
+    </h1>
+    <p class="page-subtitle mb-0">
+      Dữ liệu được sắp xếp theo ngày tăng dần và giờ giới hạn từ sáng đến tối.
+    </p>
+  </div>
+  <div class="hero-actions">
+    {% if can_manage_categories %}
+      <a class="btn btn-outline-primary" href="{{ url_for('category.categories') }}">Quản lý hạng mục</a>
+    {% endif %}
+    <button
+      class="btn btn-outline-secondary"
+      type="button"
+      data-bs-toggle="modal"
+      data-bs-target="#notificationModal"
+      {% if not target_user %}disabled{% endif %}
+    >
+      Thông báo chưa hoàn thành
+    </button>
+    <a
+      class="btn btn-primary"
+      href="{{ url_for('checklist.print_checklist', user_id=(target_user.id if target_user else None), date=filters.date) }}"
+      {% if not target_user %}aria-disabled="true" onclick="return false;"{% endif %}
+    >
+      In checklist
+    </a>
+  </div>
+</section>
+
+<section class="stats-grid mb-4">
+  <article class="stat-card">
+    <span class="stat-label">Tổng checklist</span>
+    <strong>{{ stats.total }}</strong>
+  </article>
+  <article class="stat-card success">
+    <span class="stat-label">Đã xong</span>
+    <strong>{{ stats.done }}</strong>
+  </article>
+  <article class="stat-card muted">
+    <span class="stat-label">Chưa xong</span>
+    <strong>{{ stats.pending }}</strong>
+  </article>
+  <article class="stat-card warning">
+    <span class="stat-label">Bất thường</span>
+    <strong>{{ stats.abnormal }}</strong>
+  </article>
+</section>
+
+<section class="card-panel mb-4">
+  <form method="get" class="row g-3 align-items-end filter-form" data-reset-page="true">
+    <div class="col-12 col-lg-4">
+      <label class="form-label">Từ khóa</label>
+      <input type="text" name="keyword" class="form-control" value="{{ filters.keyword }}" placeholder="Tìm theo ký hiệu, hạng mục, người dùng">
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label">Ngày</label>
+      <input type="date" name="date" class="form-control" value="{{ filters.date }}">
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label">Trạng thái</label>
+      <select name="status" class="form-select">
+        <option value="">Tất cả</option>
+        <option value="o" {% if filters.status == "o" %}selected{% endif %}>o - Đã xong</option>
+        <option value="x" {% if filters.status == "x" %}selected{% endif %}>x - Chưa xong</option>
+        <option value="△" {% if filters.status == "△" %}selected{% endif %}>△ - Bất thường</option>
+      </select>
+    </div>
+    {% if show_user_column %}
+      <div class="col-12 col-lg-2">
+        <label class="form-label">Người dùng</label>
+        <select name="user_id" class="form-select">
+          <option value="">Tất cả</option>
+          {% for user in users %}
+            <option value="{{ user.id }}" {% if filters.user_id == user.id|string %}selected{% endif %}>{{ user.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+    <div class="col-12 col-lg-2">
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-grow-1">Lọc</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('checklist.dashboard') }}">Reset</a>
+      </div>
+    </div>
+  </form>
+</section>
+
+{% if can_generate %}
+<section class="card-panel mb-4">
+  <div class="section-title">Generate checklist hôm nay</div>
+  <form method="post" action="{{ url_for('checklist.generate_daily_checks') }}" class="row g-3 align-items-end">
+    <div class="col-12 col-md-5">
+      <label class="form-label">Người dùng</label>
+      <select name="user_id" class="form-select" required>
+        <option value="">Chọn người dùng</option>
+        {% for user in users %}
+          <option value="{{ user.id }}">{{ user.name }} ({{ user.role }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label">Ngày generate</label>
+      <input type="date" name="date" class="form-control" value="{{ filters.date or today }}" required>
+    </div>
+    <div class="col-12 col-md-3">
+      <button type="submit" class="btn btn-primary w-100">Generate checklist hôm nay</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% if can_confirm and target_user %}
+<section class="card-panel mb-4">
+  <div class="section-title">Ký xác nhận trong ngày</div>
+  {% if confirmation %}
+    <div class="confirmation-box">
+      <div><strong>Người ký:</strong> {{ confirmation.confirmed_by_name }}</div>
+      <div><strong>Thời gian ký:</strong> {{ confirmation.confirmed_at|datetime_local }}</div>
+      <div><strong>Ghi chú:</strong> {{ confirmation.signature_note or "Không có" }}</div>
+    </div>
+  {% else %}
+    <form method="post" action="{{ url_for('confirmation.confirm_daily_check') }}" class="row g-3">
+      <input type="hidden" name="user_id" value="{{ target_user.id }}">
+      <input type="hidden" name="date" value="{{ filters.date }}">
+      <div class="col-12 col-lg-9">
+        <label class="form-label">Ghi chú xác nhận</label>
+        <input type="text" name="signature_note" class="form-control" placeholder="Ví dụ: Đã kiểm tra và xác nhận checklist trong ngày">
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label d-block">&nbsp;</label>
+        <button type="submit" class="btn btn-success w-100">Ký xác nhận</button>
+      </div>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card-panel">
+  <div class="table-header">
+    <div>
+      <div class="section-title mb-1">Danh sách checklist</div>
+      <div class="text-muted small">
+        Hiển thị {{ page_start }}-{{ page_end }} / {{ pagination.total }} mục
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table align-middle custom-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          {% if show_user_column %}
+            <th>Người thực hiện</th>
+          {% endif %}
+          <th>Ký hiệu</th>
+          <th>Hạng mục</th>
+          <th>Ngày</th>
+          <th>Giờ giới hạn</th>
+          <th>Trạng thái</th>
+          <th>Ghi chú bất thường</th>
+          <th>Thao tác</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if checks %}
+          {% for check in checks %}
+            <tr class="{% if nearest_check_id == check.id %}row-nearest{% endif %}">
+              <td>{{ loop.index + page_start - 1 }}</td>
+              {% if show_user_column %}
+                <td>{{ check.user.name }}</td>
+              {% endif %}
+              <td><span class="symbol-pill">{{ check.symbol }}</span></td>
+              <td>
+                {{ check.category }}
+                {% if nearest_check_id == check.id %}
+                  <span class="nearest-badge">Gần thời gian hiện tại</span>
+                {% endif %}
+              </td>
+              <td>{{ check.date|date_local }}</td>
+              <td>{{ check.limit_time|time_local }}</td>
+              <td>{% include "partials/status_badge.html" %}</td>
+              <td>
+                {% set note = abnormal_note_map.get(check.id) %}
+                {{ note.note if note else "-" }}
+              </td>
+              <td>
+                {% if current_user.role == "user" and check.user_id == current_user.id %}
+                  <div class="action-stack">
+                    <form method="post" action="{{ url_for('checklist.update_status') }}">
+                      <input type="hidden" name="check_id" value="{{ check.id }}">
+                      <input type="hidden" name="status" value="o">
+                      <input type="hidden" name="redirect_url" value="{{ request.full_path }}">
+                      <button class="btn btn-sm btn-success-soft" type="submit">o</button>
+                    </form>
+                    <form method="post" action="{{ url_for('checklist.update_status') }}">
+                      <input type="hidden" name="check_id" value="{{ check.id }}">
+                      <input type="hidden" name="status" value="x">
+                      <input type="hidden" name="redirect_url" value="{{ request.full_path }}">
+                      <button class="btn btn-sm btn-secondary-soft" type="submit">x</button>
+                    </form>
+                    <button
+                      class="btn btn-sm btn-warning-soft"
+                      type="button"
+                      data-bs-toggle="modal"
+                      data-bs-target="#abnormalModal{{ check.id }}"
+                    >
+                      △
+                    </button>
+                  </div>
+
+                  <div class="modal fade" id="abnormalModal{{ check.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                      <div class="modal-content">
+                        <form method="post" action="{{ url_for('checklist.update_status') }}">
+                          <div class="modal-header">
+                            <h5 class="modal-title">Đánh dấu bất thường</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                          </div>
+                          <div class="modal-body">
+                            <input type="hidden" name="check_id" value="{{ check.id }}">
+                            <input type="hidden" name="status" value="△">
+                            <input type="hidden" name="redirect_url" value="{{ request.full_path }}">
+                            <div class="mb-3">
+                              <label class="form-label">Ghi chú bất thường</label>
+                              <textarea name="note" class="form-control" rows="4" required>{{ abnormal_note_map.get(check.id).note if abnormal_note_map.get(check.id) else '' }}</textarea>
+                            </div>
+                          </div>
+                          <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                            <button type="submit" class="btn btn-warning">Lưu bất thường</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                {% else %}
+                  <span class="text-muted small">Chỉ xem</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="{{ 9 if show_user_column else 8 }}" class="empty-cell">
+              Không có checklist cho điều kiện lọc hiện tại.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include "partials/pagination.html" %}
+</section>
+
+<div class="modal fade" id="notificationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Checklist cần xử lý trong ngày</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% if target_user %}
+          <div class="mb-3 text-muted">
+            Người thực hiện: <strong>{{ target_user.name }}</strong> | Ngày: <strong>{{ filters.date }}</strong>
+          </div>
+          {% if notifications.incomplete or notifications.abnormal %}
+            <div class="notification-group">
+              <h6>Chưa hoàn thành</h6>
+              {% if notifications.incomplete %}
+                <ul class="list-group list-group-flush">
+                  {% for check in notifications.incomplete %}
+                    <li class="list-group-item d-flex justify-content-between">
+                      <span>{{ check.symbol }} - {{ check.category }}</span>
+                      <span>{{ check.limit_time|time_local }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <div class="text-muted small">Không có mục chưa hoàn thành.</div>
+              {% endif %}
+            </div>
+
+            <div class="notification-group mt-4">
+              <h6>Bất thường cần xem xét</h6>
+              {% if notifications.abnormal %}
+                <ul class="list-group list-group-flush">
+                  {% for check in notifications.abnormal %}
+                    <li class="list-group-item">
+                      <div class="d-flex justify-content-between gap-3">
+                        <span>{{ check.symbol }} - {{ check.category }}</span>
+                        <span>{{ check.limit_time|time_local }}</span>
+                      </div>
+                      <div class="small text-muted mt-1">
+                        {{ abnormal_note_map.get(check.id).note if abnormal_note_map.get(check.id) else "Chưa có ghi chú." }}
+                      </div>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <div class="text-muted small">Không có mục bất thường.</div>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="empty-notification">Không có checklist cần xử lý hôm nay</div>
+          {% endif %}
+        {% else %}
+          <div class="empty-notification">Vui lòng chọn người dùng trước khi xem thông báo.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

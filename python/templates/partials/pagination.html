@@ -1,0 +1,28 @@
+{% if pagination.pages > 1 %}
+  {% set args = request.args.to_dict() %}
+  <nav class="mt-4" aria-label="Pagination">
+    <ul class="pagination justify-content-center mb-0">
+      <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+        {% set args_prev = args.copy() %}
+        {% set _ = args_prev.update({'page': pagination.prev_num}) %}
+        <a class="page-link" href="{% if pagination.has_prev %}{{ url_for(request.endpoint, **args_prev) }}{% else %}#{% endif %}">Trước</a>
+      </li>
+      {% for page_num in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+        {% if page_num %}
+          {% set args_page = args.copy() %}
+          {% set _ = args_page.update({'page': page_num}) %}
+          <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for(request.endpoint, **args_page) }}">{{ page_num }}</a>
+          </li>
+        {% else %}
+          <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+      {% endfor %}
+      <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+        {% set args_next = args.copy() %}
+        {% set _ = args_next.update({'page': pagination.next_num}) %}
+        <a class="page-link" href="{% if pagination.has_next %}{{ url_for(request.endpoint, **args_next) }}{% else %}#{% endif %}">Sau</a>
+      </li>
+    </ul>
+  </nav>
+{% endif %}

@@ -1,0 +1,9 @@
+{% if check.status == "o" %}
+  <span class="badge text-bg-success status-badge">o</span>
+{% elif check.status == "x" %}
+  <span class="badge text-bg-secondary status-badge">x</span>
+{% elif check.status == "△" %}
+  <span class="badge text-bg-warning status-badge">△</span>
+{% else %}
+  <span class="badge text-bg-light status-badge">-</span>
+{% endif %}

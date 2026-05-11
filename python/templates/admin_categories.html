@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý hạng mục | Daily Check{% endblock %}
+
+{% block content %}
+<section class="hero-card mb-4">
+  <div>
+    <div class="eyebrow">ADMIN</div>
+    <h1 class="page-title mb-2">Quản lý hạng mục checklist</h1>
+    <p class="page-subtitle mb-0">Admin tạo, chỉnh sửa và xóa các hạng mục dùng chung cho toàn hệ thống.</p>
+  </div>
+  <div class="hero-actions">
+    <a href="{{ url_for('checklist.dashboard') }}" class="btn btn-outline-primary">Về dashboard</a>
+  </div>
+</section>
+
+<section class="card-panel mb-4">
+  <div class="section-title">Thêm hạng mục mới</div>
+  <form method="post" class="row g-3">
+    <div class="col-12 col-md-3">
+      <label class="form-label">Ký hiệu</label>
+      <input type="text" name="symbol" class="form-control" required>
+    </div>
+    <div class="col-12 col-md-6">
+      <label class="form-label">Hạng mục</label>
+      <input type="text" name="category" class="form-control" required>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label">Giờ giới hạn</label>
+      <input type="time" name="limit_time" class="form-control" required>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Thêm hạng mục</button>
+    </div>
+  </form>
+</section>
+
+<section class="card-panel">
+  <div class="section-title">Danh sách hạng mục</div>
+  <div class="table-responsive">
+    <table class="table align-middle custom-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Ký hiệu</th>
+          <th>Hạng mục</th>
+          <th>Giờ giới hạn</th>
+          <th>Ngày tạo</th>
+          <th>Thao tác</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for category in categories %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><span class="symbol-pill">{{ category.symbol }}</span></td>
+            <td>{{ category.category }}</td>
+            <td>{{ category.limit_time|time_local }}</td>
+            <td>{{ category.created_at|datetime_local }}</td>
+            <td>
+              <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editCategory{{ category.id }}">
+                  Sửa
+                </button>
+                <form method="post" action="{{ url_for('category.delete_category', category_id=category.id) }}" onsubmit="return confirm('Xóa hạng mục này?');">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Xóa</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <tr class="collapse-row">
+            <td colspan="6" class="p-0 border-0">
+              <div class="collapse" id="editCategory{{ category.id }}">
+                <form method="post" action="{{ url_for('category.update_category', category_id=category.id) }}" class="edit-row-form">
+                  <div class="row g-3">
+                    <div class="col-12 col-md-3">
+                      <label class="form-label">Ký hiệu</label>
+                      <input type="text" name="symbol" class="form-control" value="{{ category.symbol }}" required>
+                    </div>
+                    <div class="col-12 col-md-5">
+                      <label class="form-label">Hạng mục</label>
+                      <input type="text" name="category" class="form-control" value="{{ category.category }}" required>
+                    </div>
+                    <div class="col-12 col-md-2">
+                      <label class="form-label">Giờ</label>
+                      <input type="time" name="limit_time" class="form-control" value="{{ category.limit_time|time_local }}" required>
+                    </div>
+                    <div class="col-12 col-md-2 d-flex align-items-end">
+                      <button class="btn btn-primary w-100" type="submit">Lưu</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6" class="empty-cell">Chưa có hạng mục nào.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
