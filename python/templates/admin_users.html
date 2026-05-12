@@ -1,0 +1,140 @@
+{% extends "admin_layout.html" %}
+
+{% block title %}{{ t('manage_accounts') }}{% endblock %}
+
+{% block admin_content %}
+<div class="card mb-4">
+    <div class="card-header bg-white border-0">
+        <h1 class="h4 mb-0">{{ t('manage_accounts') }}</h1>
+    </div>
+    <div class="card-body">
+        <form method="post" class="row g-3">
+            <input type="hidden" name="action" value="{{ 'update' if edit_user else 'create' }}">
+            {% if edit_user %}
+                <input type="hidden" name="user_id" value="{{ edit_user.id }}">
+            {% endif %}
+            <div class="col-md-4">
+                <label class="form-label">Username</label>
+                <input class="form-control" name="username" value="{{ edit_user.username if edit_user else '' }}" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Full name</label>
+                <input class="form-control" name="full_name" value="{{ edit_user.full_name if edit_user else '' }}" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Employee code</label>
+                <input class="form-control" name="employee_code" value="{{ edit_user.employee_code if edit_user else '' }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Department</label>
+                <input class="form-control" name="department" value="{{ edit_user.department if edit_user else '' }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Line default</label>
+                <input class="form-control" name="line_name" value="{{ edit_user.line_name if edit_user else '' }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Role</label>
+                <select class="form-select" name="role">
+                    {% for role in roles %}
+                        <option value="{{ role }}" {% if edit_user and edit_user.role == role %}selected{% endif %}>{{ role }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Password</label>
+                <input class="form-control" type="text" name="password" placeholder="{% if edit_user %}Bo trong neu khong doi{% else %}123456{% endif %}">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Gán line</label>
+                <div class="row g-2">
+                    {% for line in lines %}
+                        <div class="col-sm-6 col-xl-3">
+                            <label class="border rounded p-2 d-flex gap-2 align-items-center">
+                                <input
+                                    class="form-check-input mt-0"
+                                    type="checkbox"
+                                    name="line_ids"
+                                    value="{{ line.id }}"
+                                    {% if edit_user and line.id in edit_user.user_lines|map(attribute='line_id')|list %}checked{% endif %}
+                                >
+                                <span>{{ line.line_name }} - {{ line.department }}</span>
+                            </label>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Trang thai</label>
+                <select class="form-select" name="is_active">
+                    <option value="1" {% if not edit_user or edit_user.is_active %}selected{% endif %}>Active</option>
+                    <option value="0" {% if edit_user and not edit_user.is_active %}selected{% endif %}>Locked</option>
+                </select>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary" type="submit">{% if edit_user %}Cập nhật user{% else %}Thêm user{% endif %}</button>
+                {% if edit_user %}
+                    <a class="btn btn-outline-secondary" href="{{ url_for('admin.users') }}">Bo sua</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white border-0">
+        <h2 class="h5 mb-0">Danh sách user</h2>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-checklist align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Username</th>
+                        <th>Full name</th>
+                        <th>Role</th>
+                        <th>Department</th>
+                        <th>Line</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.full_name }}</td>
+                            <td>{{ user.role }}</td>
+                            <td>{{ user.department }}</td>
+                            <td>
+                                {% if user.user_lines %}
+                                    {{ user.user_lines | map(attribute='line.line_name') | join(', ') }}
+                                {% else %}
+                                    {{ user.line_name }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if user.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                    {{ "Active" if user.is_active else "Locked" }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.users', edit=user.id) }}">Sua</a>
+                                    <form method="post" action="{{ url_for('admin.toggle_user', user_id=user.id) }}">
+                                        <button class="btn btn-sm btn-outline-secondary" type="submit">
+                                            {{ "Khoa" if user.is_active else "Mo khoa" }}
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

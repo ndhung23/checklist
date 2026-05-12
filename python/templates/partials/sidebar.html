@@ -1,0 +1,10 @@
+<aside class="admin-sidebar">
+    <div class="sidebar-title">Admin Panel</div>
+    <a class="sidebar-link {% if current_endpoint == 'checklist.dashboard' %}active{% endif %}" href="{{ url_for('checklist.dashboard') }}">{{ t('dashboard') }}</a>
+    <a class="sidebar-link {% if current_endpoint == 'admin.users' %}active{% endif %}" href="{{ url_for('admin.users') }}">{{ t('manage_accounts') }}</a>
+    <span class="sidebar-link disabled">{{ t('manage_items') }}</span>
+    <span class="sidebar-link disabled">{{ t('manage_lines') }}</span>
+    <span class="sidebar-link disabled">{{ t('abnormal_reports') }}</span>
+    <span class="sidebar-link disabled">{{ t('confirm_checklist') }}</span>
+    <a class="sidebar-link" href="{{ url_for('auth.logout') }}">{{ t('logout') }}</a>
+</aside>

@@ -1,15 +1,25 @@
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll("[data-reset-page='true']").forEach((form) => {
-    form.querySelectorAll("input, select").forEach((field) => {
-      if (field.name === "page") {
+  const modal = document.getElementById("abnormalModal");
+  const form = document.getElementById("abnormalForm");
+
+  if (modal && form) {
+    modal.addEventListener("show.bs.modal", (event) => {
+      const button = event.relatedTarget;
+      if (!button) {
         return;
       }
-      field.addEventListener("change", () => {
-        const pageField = form.querySelector("input[name='page']");
-        if (pageField) {
-          pageField.value = "1";
-        }
-      });
+
+      form.action = button.dataset.action || "";
+      document.getElementById("modalResultId").value = button.dataset.id || "";
+      document.getElementById("modalSymbol").value = button.dataset.symbol || "";
+      document.getElementById("modalDate").value = button.dataset.date || "";
+      document.getElementById("modalResult").value = button.dataset.result || "x";
+      document.getElementById("modalContent").value = button.dataset.content || "";
+      document.getElementById("modalNote").value = button.dataset.note || "";
+      document.getElementById("modalCountermeasure").value = button.dataset.countermeasure || "";
+      document.getElementById("modalConfirmDate").value = button.dataset.confirmDate || "";
+      document.getElementById("modalResultAfterFix").value = button.dataset.resultAfterFix || "";
+      document.getElementById("modalStatus").value = button.dataset.status || "open";
     });
-  });
+  }
 });

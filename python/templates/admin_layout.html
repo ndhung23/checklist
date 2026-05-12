@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-12 col-lg-2">
+        {% include "partials/sidebar.html" %}
+    </div>
+    <div class="col-12 col-lg-10">
+        {% block admin_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}

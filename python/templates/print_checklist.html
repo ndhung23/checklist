@@ -1,69 +1,139 @@
 <!doctype html>
-<html lang="vi">
+<html lang="{{ current_lang }}">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>In checklist | Daily Check</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ t('print_checklist') }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="print-page">
-  <div class="container py-4">
-    <div class="d-flex justify-content-between align-items-start mb-4 no-print">
-      <div>
-        <h1 class="page-title mb-1">Checklist trong ngày</h1>
-        <div class="text-muted">Người thực hiện: {{ target_user.name }} | Ngày: {{ selected_date|date_local }}</div>
-      </div>
-      <button class="btn btn-primary" onclick="window.print()">In</button>
-    </div>
+    <div class="container-fluid main-wrapper print-wrapper">
+        <div class="d-flex justify-content-between align-items-start mb-4 no-print">
+            <div>
+                <h1 class="page-title mb-1">Checksheet tuần tra nhà máy</h1>
+                <div class="text-muted">Ban in doi chieu theo ngay</div>
+            </div>
+            <button class="btn btn-primary" onclick="window.print()">In</button>
+        </div>
 
-    <div class="print-meta card-panel mb-4">
-      <div><strong>Người thực hiện:</strong> {{ target_user.name }}</div>
-      <div><strong>Username:</strong> {{ target_user.username }}</div>
-      <div><strong>Ngày:</strong> {{ selected_date|date_local }}</div>
-    </div>
+        <div class="print-block mb-4">
+            <div class="print-grid">
+                <div><strong>Họ và tên SL/TL:</strong> {{ sheet.user.full_name }}</div>
+                <div><strong>Mã NV:</strong> {{ sheet.user.employee_code }}</div>
+                <div><strong>Line:</strong> {{ sheet.line_name }}</div>
+                <div><strong>Tháng:</strong> {{ sheet.month }}/{{ sheet.year }}</div>
+            </div>
+        </div>
 
-    <div class="table-responsive">
-      <table class="table custom-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Ký hiệu</th>
-            <th>Hạng mục</th>
-            <th>Giờ giới hạn</th>
-            <th>Trạng thái</th>
-            <th>Ghi chú bất thường</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for check in checks %}
-            <tr>
-              <td>{{ loop.index }}</td>
-              <td>{{ check.symbol }}</td>
-              <td>{{ check.category }}</td>
-              <td>{{ check.limit_time|time_local }}</td>
-              <td>{{ check.status }}</td>
-              <td>{{ note_map.get(check.id).note if note_map.get(check.id) else "" }}</td>
-            </tr>
-          {% else %}
-            <tr>
-              <td colspan="6" class="empty-cell">Không có checklist để in.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+        <div class="print-note mb-4">
+            <strong>Chú ý:</strong>
+            <div>Kết quả kiểm tra tốt: điền o</div>
+            <div>Không tốt: điền x</div>
+            <div>Ngoài ra trường hợp x phải ghi số trong kí hiệu △ và viết lịch sử xuống cột dưới.</div>
+        </div>
 
-    <section class="card-panel mt-4">
-      <div class="section-title">Phần ký xác nhận cấp trên</div>
-      {% if confirmation %}
-        <div><strong>Người ký:</strong> {{ confirmation.confirmed_by_name }}</div>
-        <div><strong>Thời gian ký:</strong> {{ confirmation.confirmed_at|datetime_local }}</div>
-        <div><strong>Ghi chú xác nhận:</strong> {{ confirmation.signature_note or "Không có" }}</div>
-      {% else %}
-        <div class="text-muted">Chưa có xác nhận cho ngày này.</div>
-      {% endif %}
-    </section>
-  </div>
+        <div class="table-responsive mb-4">
+            <table class="table table-checklist table-print mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Thời gian</th>
+                        <th>Ký hiệu</th>
+                        <th>Hạng mục check</th>
+                        <th>Kết quả</th>
+                        <th>Ghi chú bất thường</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ result.check_time|time_local }}</td>
+                            <td>{{ result.symbol }}</td>
+                            <td>{{ get_item_content(result.checklist_item, current_lang) }}</td>
+                            <td>{{ result.result or t('empty') }}</td>
+                            <td>{{ result.abnormal_note or "" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mb-4">
+            <h2 class="section-title mb-3">Nội dung lỗi và lịch sử xử lý</h2>
+            <div class="table-responsive">
+                <table class="table table-checklist table-print mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Ký hiệu</th>
+                            <th>Ngày tháng phát sinh</th>
+                            <th>Nội dung bất thường</th>
+                            <th>Đối sách xử lý</th>
+                            <th>Ngày xác nhận sau khi xử lý</th>
+                            <th>Kết quả xác nhận sau khi xử lý</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for report in abnormal_reports %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ report.symbol }}</td>
+                                <td>{{ report.occurred_date|date_local }}</td>
+                                <td>{{ report.abnormal_content }}</td>
+                                <td>{{ report.countermeasure or "" }}</td>
+                                <td>{{ report.confirm_date_before_fix|date_local if report.confirm_date_before_fix else "" }}</td>
+                                <td>{{ report.result_after_fix or "" }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center">Không có abnormal report.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-checklist table-print mb-0">
+                <thead>
+                    <tr>
+                        <th>Người thực hiện</th>
+                        <th>Leader xác nhận</th>
+                        <th>Manager xác nhận</th>
+                        <th>Ngày ký</th>
+                        <th>Ghi chú xác nhận</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ sheet.user.full_name }}</td>
+                        <td>
+                            {% for item in confirmations if item.confirmed_role == 'leader' %}
+                                <div>{{ item.confirmed_by_name }}</div>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for item in confirmations if item.confirmed_role == 'manager' %}
+                                <div>{{ item.confirmed_by_name }}</div>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for item in confirmations %}
+                                <div>{{ item.confirmed_at|date_local }}</div>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for item in confirmations %}
+                                <div>{{ item.signature_note or "" }}</div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </body>
 </html>

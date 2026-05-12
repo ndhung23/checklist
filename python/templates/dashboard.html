@@ -1,331 +1,393 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard | Daily Check{% endblock %}
+{% block title %}{{ t('dashboard') }}{% endblock %}
 
 {% block content %}
-<section class="hero-card mb-4">
-  <div>
-    <div class="eyebrow">{{ current_user.role|upper }}</div>
-    <h1 class="page-title mb-2">
-      {% if current_user.role == "user" %}
-        Checklist của {{ current_user.name }}
-      {% elif current_user.role == "manager" %}
-        Dashboard quản lý checklist
-      {% else %}
-        Dashboard quản trị checklist
-      {% endif %}
-    </h1>
-    <p class="page-subtitle mb-0">
-      Dữ liệu được sắp xếp theo ngày tăng dần và giờ giới hạn từ sáng đến tối.
-    </p>
-  </div>
-  <div class="hero-actions">
-    {% if can_manage_categories %}
-      <a class="btn btn-outline-primary" href="{{ url_for('category.categories') }}">Quản lý hạng mục</a>
-    {% endif %}
-    <button
-      class="btn btn-outline-secondary"
-      type="button"
-      data-bs-toggle="modal"
-      data-bs-target="#notificationModal"
-      {% if not target_user %}disabled{% endif %}
-    >
-      Thông báo chưa hoàn thành
-    </button>
-    <a
-      class="btn btn-primary"
-      href="{{ url_for('checklist.print_checklist', user_id=(target_user.id if target_user else None), date=filters.date) }}"
-      {% if not target_user %}aria-disabled="true" onclick="return false;"{% endif %}
-    >
-      In checklist
-    </a>
-  </div>
-</section>
-
-<section class="stats-grid mb-4">
-  <article class="stat-card">
-    <span class="stat-label">Tổng checklist</span>
-    <strong>{{ stats.total }}</strong>
-  </article>
-  <article class="stat-card success">
-    <span class="stat-label">Đã xong</span>
-    <strong>{{ stats.done }}</strong>
-  </article>
-  <article class="stat-card muted">
-    <span class="stat-label">Chưa xong</span>
-    <strong>{{ stats.pending }}</strong>
-  </article>
-  <article class="stat-card warning">
-    <span class="stat-label">Bất thường</span>
-    <strong>{{ stats.abnormal }}</strong>
-  </article>
-</section>
-
-<section class="card-panel mb-4">
-  <form method="get" class="row g-3 align-items-end filter-form" data-reset-page="true">
-    <div class="col-12 col-lg-4">
-      <label class="form-label">Từ khóa</label>
-      <input type="text" name="keyword" class="form-control" value="{{ filters.keyword }}" placeholder="Tìm theo ký hiệu, hạng mục, người dùng">
-    </div>
-    <div class="col-6 col-lg-2">
-      <label class="form-label">Ngày</label>
-      <input type="date" name="date" class="form-control" value="{{ filters.date }}">
-    </div>
-    <div class="col-6 col-lg-2">
-      <label class="form-label">Trạng thái</label>
-      <select name="status" class="form-select">
-        <option value="">Tất cả</option>
-        <option value="o" {% if filters.status == "o" %}selected{% endif %}>o - Đã xong</option>
-        <option value="x" {% if filters.status == "x" %}selected{% endif %}>x - Chưa xong</option>
-        <option value="△" {% if filters.status == "△" %}selected{% endif %}>△ - Bất thường</option>
-      </select>
-    </div>
-    {% if show_user_column %}
-      <div class="col-12 col-lg-2">
-        <label class="form-label">Người dùng</label>
-        <select name="user_id" class="form-select">
-          <option value="">Tất cả</option>
-          {% for user in users %}
-            <option value="{{ user.id }}" {% if filters.user_id == user.id|string %}selected{% endif %}>{{ user.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    {% endif %}
+{% if current_user and current_user.role == 'admin' %}
+<div class="row g-4">
     <div class="col-12 col-lg-2">
-      <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary flex-grow-1">Lọc</button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('checklist.dashboard') }}">Reset</a>
-      </div>
+        {% include "partials/sidebar.html" %}
     </div>
-  </form>
-</section>
-
-{% if can_generate %}
-<section class="card-panel mb-4">
-  <div class="section-title">Generate checklist hôm nay</div>
-  <form method="post" action="{{ url_for('checklist.generate_daily_checks') }}" class="row g-3 align-items-end">
-    <div class="col-12 col-md-5">
-      <label class="form-label">Người dùng</label>
-      <select name="user_id" class="form-select" required>
-        <option value="">Chọn người dùng</option>
-        {% for user in users %}
-          <option value="{{ user.id }}">{{ user.name }} ({{ user.role }})</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-12 col-md-4">
-      <label class="form-label">Ngày generate</label>
-      <input type="date" name="date" class="form-control" value="{{ filters.date or today }}" required>
-    </div>
-    <div class="col-12 col-md-3">
-      <button type="submit" class="btn btn-primary w-100">Generate checklist hôm nay</button>
-    </div>
-  </form>
-</section>
+    <div class="col-12 col-lg-10">
 {% endif %}
-
-{% if can_confirm and target_user %}
-<section class="card-panel mb-4">
-  <div class="section-title">Ký xác nhận trong ngày</div>
-  {% if confirmation %}
-    <div class="confirmation-box">
-      <div><strong>Người ký:</strong> {{ confirmation.confirmed_by_name }}</div>
-      <div><strong>Thời gian ký:</strong> {{ confirmation.confirmed_at|datetime_local }}</div>
-      <div><strong>Ghi chú:</strong> {{ confirmation.signature_note or "Không có" }}</div>
-    </div>
-  {% else %}
-    <form method="post" action="{{ url_for('confirmation.confirm_daily_check') }}" class="row g-3">
-      <input type="hidden" name="user_id" value="{{ target_user.id }}">
-      <input type="hidden" name="date" value="{{ filters.date }}">
-      <div class="col-12 col-lg-9">
-        <label class="form-label">Ghi chú xác nhận</label>
-        <input type="text" name="signature_note" class="form-control" placeholder="Ví dụ: Đã kiểm tra và xác nhận checklist trong ngày">
-      </div>
-      <div class="col-12 col-lg-3">
-        <label class="form-label d-block">&nbsp;</label>
-        <button type="submit" class="btn btn-success w-100">Ký xác nhận</button>
-      </div>
-    </form>
-  {% endif %}
-</section>
-{% endif %}
-
-<section class="card-panel">
-  <div class="table-header">
+<section class="hero-panel mb-4">
     <div>
-      <div class="section-title mb-1">Danh sách checklist</div>
-      <div class="text-muted small">
-        Hiển thị {{ page_start }}-{{ page_end }} / {{ pagination.total }} mục
-      </div>
+        <h1 class="page-title mb-2">{{ t('dashboard') }}</h1>
+        <p class="page-subtitle mb-0">Checklist master duoc co dinh ca nam. Khi chon ngay moi he thong se tu dong tao full danh sach hang muc voi ket qua rong neu chua co du lieu.</p>
     </div>
-  </div>
-
-  <div class="table-responsive">
-    <table class="table align-middle custom-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          {% if show_user_column %}
-            <th>Người thực hiện</th>
-          {% endif %}
-          <th>Ký hiệu</th>
-          <th>Hạng mục</th>
-          <th>Ngày</th>
-          <th>Giờ giới hạn</th>
-          <th>Trạng thái</th>
-          <th>Ghi chú bất thường</th>
-          <th>Thao tác</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if checks %}
-          {% for check in checks %}
-            <tr class="{% if nearest_check_id == check.id %}row-nearest{% endif %}">
-              <td>{{ loop.index + page_start - 1 }}</td>
-              {% if show_user_column %}
-                <td>{{ check.user.name }}</td>
-              {% endif %}
-              <td><span class="symbol-pill">{{ check.symbol }}</span></td>
-              <td>
-                {{ check.category }}
-                {% if nearest_check_id == check.id %}
-                  <span class="nearest-badge">Gần thời gian hiện tại</span>
-                {% endif %}
-              </td>
-              <td>{{ check.date|date_local }}</td>
-              <td>{{ check.limit_time|time_local }}</td>
-              <td>{% include "partials/status_badge.html" %}</td>
-              <td>
-                {% set note = abnormal_note_map.get(check.id) %}
-                {{ note.note if note else "-" }}
-              </td>
-              <td>
-                {% if current_user.role == "user" and check.user_id == current_user.id %}
-                  <div class="action-stack">
-                    <form method="post" action="{{ url_for('checklist.update_status') }}">
-                      <input type="hidden" name="check_id" value="{{ check.id }}">
-                      <input type="hidden" name="status" value="o">
-                      <input type="hidden" name="redirect_url" value="{{ request.full_path }}">
-                      <button class="btn btn-sm btn-success-soft" type="submit">o</button>
-                    </form>
-                    <form method="post" action="{{ url_for('checklist.update_status') }}">
-                      <input type="hidden" name="check_id" value="{{ check.id }}">
-                      <input type="hidden" name="status" value="x">
-                      <input type="hidden" name="redirect_url" value="{{ request.full_path }}">
-                      <button class="btn btn-sm btn-secondary-soft" type="submit">x</button>
-                    </form>
-                    <button
-                      class="btn btn-sm btn-warning-soft"
-                      type="button"
-                      data-bs-toggle="modal"
-                      data-bs-target="#abnormalModal{{ check.id }}"
-                    >
-                      △
-                    </button>
-                  </div>
-
-                  <div class="modal fade" id="abnormalModal{{ check.id }}" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog">
-                      <div class="modal-content">
-                        <form method="post" action="{{ url_for('checklist.update_status') }}">
-                          <div class="modal-header">
-                            <h5 class="modal-title">Đánh dấu bất thường</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                          </div>
-                          <div class="modal-body">
-                            <input type="hidden" name="check_id" value="{{ check.id }}">
-                            <input type="hidden" name="status" value="△">
-                            <input type="hidden" name="redirect_url" value="{{ request.full_path }}">
-                            <div class="mb-3">
-                              <label class="form-label">Ghi chú bất thường</label>
-                              <textarea name="note" class="form-control" rows="4" required>{{ abnormal_note_map.get(check.id).note if abnormal_note_map.get(check.id) else '' }}</textarea>
-                            </div>
-                          </div>
-                          <div class="modal-footer">
-                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
-                            <button type="submit" class="btn btn-warning">Lưu bất thường</button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-                {% else %}
-                  <span class="text-muted small">Chỉ xem</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="{{ 9 if show_user_column else 8 }}" class="empty-cell">
-              Không có checklist cho điều kiện lọc hiện tại.
-            </td>
-          </tr>
+    <div class="hero-actions no-print">
+        {% if selected_sheet %}
+            <a class="btn btn-outline-primary" href="{{ url_for('checklist.print_checklist', sheet_id=selected_sheet.id) }}" target="_blank">{{ t('print_checklist') }}</a>
         {% endif %}
-      </tbody>
-    </table>
-  </div>
-
-  {% include "partials/pagination.html" %}
+        <a class="btn btn-outline-secondary" href="#abnormal-section">{{ t('abnormal_history') }}</a>
+        {% if current_user and current_user.role == 'admin' %}
+            <a class="btn btn-outline-dark" href="{{ url_for('admin.users') }}">{{ t('manage_accounts') }}</a>
+        {% endif %}
+    </div>
 </section>
 
-<div class="modal fade" id="notificationModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Checklist cần xử lý trong ngày</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        {% if target_user %}
-          <div class="mb-3 text-muted">
-            Người thực hiện: <strong>{{ target_user.name }}</strong> | Ngày: <strong>{{ filters.date }}</strong>
-          </div>
-          {% if notifications.incomplete or notifications.abnormal %}
-            <div class="notification-group">
-              <h6>Chưa hoàn thành</h6>
-              {% if notifications.incomplete %}
-                <ul class="list-group list-group-flush">
-                  {% for check in notifications.incomplete %}
-                    <li class="list-group-item d-flex justify-content-between">
-                      <span>{{ check.symbol }} - {{ check.category }}</span>
-                      <span>{{ check.limit_time|time_local }}</span>
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <div class="text-muted small">Không có mục chưa hoàn thành.</div>
-              {% endif %}
+<form class="card p-3 mb-4 filter-panel no-print" method="get">
+    <div class="row g-3 align-items-end">
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label">{{ t('date') }}</label>
+            <input class="form-control" type="date" name="date" value="{{ selected_date }}">
+        </div>
+        {% if visible_lines %}
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label">Line</label>
+                <select class="form-select" name="line">
+                    <option value="">Tất cả</option>
+                    {% for line in visible_lines %}
+                        <option value="{{ line.line_name }}" {% if selected_line == line.line_name %}selected{% endif %}>{{ line.line_name }}</option>
+                    {% endfor %}
+                </select>
             </div>
-
-            <div class="notification-group mt-4">
-              <h6>Bất thường cần xem xét</h6>
-              {% if notifications.abnormal %}
-                <ul class="list-group list-group-flush">
-                  {% for check in notifications.abnormal %}
-                    <li class="list-group-item">
-                      <div class="d-flex justify-content-between gap-3">
-                        <span>{{ check.symbol }} - {{ check.category }}</span>
-                        <span>{{ check.limit_time|time_local }}</span>
-                      </div>
-                      <div class="small text-muted mt-1">
-                        {{ abnormal_note_map.get(check.id).note if abnormal_note_map.get(check.id) else "Chưa có ghi chú." }}
-                      </div>
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <div class="text-muted small">Không có mục bất thường.</div>
-              {% endif %}
-            </div>
-          {% else %}
-            <div class="empty-notification">Không có checklist cần xử lý hôm nay</div>
-          {% endif %}
-        {% else %}
-          <div class="empty-notification">Vui lòng chọn người dùng trước khi xem thông báo.</div>
         {% endif %}
-      </div>
+        {% if visible_users %}
+            <div class="col-sm-6 col-lg-3">
+                <label class="form-label">User</label>
+                <select class="form-select" name="user_id">
+                    <option value="">Tất cả</option>
+                    {% for user in visible_users %}
+                        <option value="{{ user.id }}" {% if selected_user_id == user.id %}selected{% endif %}>{{ user.full_name }} - {{ user.line_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        {% endif %}
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label">{{ t('search') }}</label>
+            <input class="form-control" type="text" name="keyword" value="{{ keyword }}" placeholder="Tìm kiếm hạng mục...">
+        </div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label">{{ t('result') }}</label>
+            <select class="form-select" name="result_filter">
+                <option value="all" {% if result_filter == 'all' %}selected{% endif %}>Tất cả</option>
+                <option value="o" {% if result_filter == 'o' %}selected{% endif %}>Đạt o</option>
+                <option value="x" {% if result_filter == 'x' %}selected{% endif %}>Lỗi x</option>
+                <option value="△" {% if result_filter == '△' %}selected{% endif %}>Bất thường △</option>
+                <option value="none" {% if result_filter == 'none' %}selected{% endif %}>Chưa điền</option>
+            </select>
+        </div>
+        <div class="col-sm-6 col-lg-1">
+            <button class="btn btn-primary w-100" type="submit">{{ t('filters') }}</button>
+        </div>
     </div>
-  </div>
+</form>
+
+<div class="stats-grid mb-4">
+    <div class="stat-card">
+        <span class="stat-label">{{ t('done') }}</span>
+        <strong>{{ result_summary["o"] }}</strong>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ t('ng') }}</span>
+        <strong>{{ result_summary["x"] }}</strong>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ t('abnormal') }}</span>
+        <strong>{{ result_summary["△"] }}</strong>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">{{ t('empty') }}</span>
+        <strong>{{ result_summary["empty"] }}</strong>
+    </div>
 </div>
+
+<div class="row g-4">
+    <div class="col-12 col-xxl-3">
+        <div class="card h-100">
+            <div class="card-header bg-white border-0 pb-0">
+                <h2 class="section-title mb-0">Daily Sheets</h2>
+            </div>
+            <div class="card-body pt-3">
+                <div class="table-responsive">
+                    <table class="table table-checklist table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>STT</th>
+                                <th>User</th>
+                                <th>Line</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sheet in sheets %}
+                                <tr class="{% if selected_sheet and selected_sheet.id == sheet.id %}table-active{% endif %}">
+                                    <td>{{ loop.index }}</td>
+                                    <td>
+                                        <a class="fw-semibold text-decoration-none" href="{{ url_for('checklist.dashboard', date=selected_date, line=selected_line, user_id=selected_user_id, keyword=keyword, result_filter=result_filter, sheet_id=sheet.id, section=active_section) }}">
+                                            {{ sheet.user.full_name }}
+                                        </a>
+                                    </td>
+                                    <td>{{ sheet.line_name }}</td>
+                                    <td><span class="badge text-bg-secondary">{{ sheet.status }}</span></td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">Không có daily sheet.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xxl-9">
+        <div class="card mb-4">
+            <div class="card-header bg-white border-0 pb-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div>
+                    <h2 class="section-title mb-1">{{ t('checklist') }}</h2>
+                    {% if selected_sheet %}
+                        <div class="text-muted small">
+                            {{ selected_sheet.template.template_name }} |
+                            {{ selected_sheet.user.full_name }} |
+                            {{ selected_sheet.line_name }} |
+                            {{ selected_sheet.check_date|date_local }}
+                        </div>
+                    {% endif %}
+                </div>
+                {% if selected_sheet %}
+                    <div class="d-flex gap-2 no-print">
+                        <a class="btn btn-sm btn-outline-primary" href="#abnormal-section">{{ t('abnormal_history') }}</a>
+                        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('checklist.print_checklist', sheet_id=selected_sheet.id) }}" target="_blank">{{ t('print_checklist') }}</a>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="card-body pt-3">
+                <div class="table-responsive table-sticky">
+                    <table class="table table-checklist align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Time</th>
+                                <th>Symbol</th>
+                                <th class="check-content">Content</th>
+                                <th>{{ t('result') }}</th>
+                                <th>Abnormal Note</th>
+                                <th class="no-print">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for result in results %}
+                                {% set row_class = 'row-result-none' %}
+                                {% if result.result == 'o' %}
+                                    {% set row_class = 'row-result-o' %}
+                                {% elif result.result == 'x' %}
+                                    {% set row_class = 'row-result-x' %}
+                                {% elif result.result == '△' %}
+                                    {% set row_class = 'row-result-triangle' %}
+                                {% endif %}
+                                <tr class="{{ row_class }}">
+                                    <td>{{ loop.index }}</td>
+                                    <td>{{ result.check_time|time_local }}</td>
+                                    <td>{{ result.symbol }}</td>
+                                    <td class="check-content">{{ get_item_content(result.checklist_item, current_lang) }}</td>
+                                    <td>
+                                        {% if result.result == 'o' %}
+                                            <span class="badge badge-result-o">o</span>
+                                        {% elif result.result == 'x' %}
+                                            <span class="badge badge-result-x">x</span>
+                                        {% elif result.result == '△' %}
+                                            <span class="badge badge-result-triangle">△</span>
+                                        {% else %}
+                                            <span class="badge badge-result-none">{{ t('empty') }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ result.abnormal_note or '-' }}</td>
+                                    <td class="no-print">
+                                        {% if current_user and (current_user.role == 'admin' or current_user.id == result.user_id) %}
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <form method="post" action="{{ url_for('checklist.update_result', result_id=result.id) }}">
+                                                    <input type="hidden" name="result" value="o">
+                                                    <button class="btn btn-sm btn-outline-success status-btn" type="submit">o</button>
+                                                </form>
+                                                <button class="btn btn-sm btn-outline-danger status-btn abnormal-trigger" type="button"
+                                                    data-bs-toggle="modal" data-bs-target="#abnormalModal"
+                                                    data-action="{{ url_for('checklist.update_abnormal_result', result_id=result.id) }}"
+                                                    data-result="x" data-id="{{ result.id }}" data-symbol="{{ result.symbol }}"
+                                                    data-date="{{ result.check_date.isoformat() }}"
+                                                    data-content="{{ get_item_content(result.checklist_item, current_lang) }}"
+                                                    data-note="{{ result.abnormal_note or '' }}"
+                                                    data-countermeasure="{{ result.abnormal_reports[0].countermeasure if result.abnormal_reports else '' }}"
+                                                    data-confirm-date="{{ result.abnormal_reports[0].confirm_date_before_fix.isoformat() if result.abnormal_reports and result.abnormal_reports[0].confirm_date_before_fix else '' }}"
+                                                    data-result-after-fix="{{ result.abnormal_reports[0].result_after_fix if result.abnormal_reports else '' }}"
+                                                    data-status="{{ result.abnormal_reports[0].status if result.abnormal_reports else 'open' }}">x</button>
+                                                <button class="btn btn-sm btn-outline-warning status-btn abnormal-trigger" type="button"
+                                                    data-bs-toggle="modal" data-bs-target="#abnormalModal"
+                                                    data-action="{{ url_for('checklist.update_abnormal_result', result_id=result.id) }}"
+                                                    data-result="△" data-id="{{ result.id }}" data-symbol="{{ result.symbol }}"
+                                                    data-date="{{ result.check_date.isoformat() }}"
+                                                    data-content="{{ get_item_content(result.checklist_item, current_lang) }}"
+                                                    data-note="{{ result.abnormal_note or '' }}"
+                                                    data-countermeasure="{{ result.abnormal_reports[0].countermeasure if result.abnormal_reports else '' }}"
+                                                    data-confirm-date="{{ result.abnormal_reports[0].confirm_date_before_fix.isoformat() if result.abnormal_reports and result.abnormal_reports[0].confirm_date_before_fix else '' }}"
+                                                    data-result-after-fix="{{ result.abnormal_reports[0].result_after_fix if result.abnormal_reports else '' }}"
+                                                    data-status="{{ result.abnormal_reports[0].status if result.abnormal_reports else 'open' }}">△</button>
+                                                <form method="post" action="{{ url_for('checklist.update_result', result_id=result.id) }}">
+                                                    <input type="hidden" name="result" value="empty">
+                                                    <button class="btn btn-sm btn-outline-secondary" type="submit">Clear</button>
+                                                </form>
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">View only</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">Không có checklist result.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="abnormal-section" class="card mb-4">
+            <div class="card-header bg-white border-0 pb-0 d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="section-title mb-1">{{ t('abnormal_history') }}</h2>
+                    <div class="small text-muted">Chi hien x va △ trong ngay hien tai.</div>
+                </div>
+                {% if selected_sheet %}
+                    <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('checklist.abnormal_reports', date=selected_date, line=selected_line, user_id=selected_user_id, keyword=keyword, result_filter=result_filter, sheet_id=selected_sheet.id) }}">Mở tab lỗi</a>
+                {% endif %}
+            </div>
+            <div class="card-body pt-3">
+                <div class="table-responsive table-sticky">
+                    <table class="table table-checklist align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Ký hiệu</th>
+                                <th>Ngày tháng phát sinh</th>
+                                <th>Nội dung bất thường</th>
+                                <th>Đối sách xử lý</th>
+                                <th>Ngày xác nhận sau khi xử lý</th>
+                                <th>Kết quả xác nhận sau khi xử lý</th>
+                                <th>Trạng thái</th>
+                                <th class="no-print">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for report in abnormal_reports %}
+                                <tr class="{% if report.daily_check_result.result == 'x' %}row-result-x{% else %}row-result-triangle{% endif %}">
+                                    <td>{{ loop.index }}</td>
+                                    <td>{{ report.symbol }}</td>
+                                    <td>{{ report.occurred_date|date_local }}</td>
+                                    <td>{{ report.abnormal_content }}</td>
+                                    <td>{{ report.countermeasure or '-' }}</td>
+                                    <td>{{ report.confirm_date_before_fix|date_local if report.confirm_date_before_fix else '-' }}</td>
+                                    <td>{{ report.result_after_fix or '-' }}</td>
+                                    <td><span class="badge status-badge status-{{ report.status }}">{{ report.status }}</span></td>
+                                    <td class="no-print">
+                                        {% if current_user and (current_user.role == 'admin' or current_user.id == report.user_id) %}
+                                            <button class="btn btn-sm btn-outline-primary abnormal-trigger" type="button"
+                                                data-bs-toggle="modal" data-bs-target="#abnormalModal"
+                                                data-action="{{ url_for('checklist.update_abnormal_result', result_id=report.daily_check_result_id) }}"
+                                                data-result="{{ report.daily_check_result.result }}"
+                                                data-id="{{ report.daily_check_result_id }}"
+                                                data-symbol="{{ report.symbol }}"
+                                                data-date="{{ report.occurred_date.isoformat() }}"
+                                                data-content="{{ get_item_content(report.daily_check_result.checklist_item, current_lang) }}"
+                                                data-note="{{ report.abnormal_content }}"
+                                                data-countermeasure="{{ report.countermeasure or '' }}"
+                                                data-confirm-date="{{ report.confirm_date_before_fix.isoformat() if report.confirm_date_before_fix else '' }}"
+                                                data-result-after-fix="{{ report.result_after_fix or '' }}"
+                                                data-status="{{ report.status }}">Sửa xử lý</button>
+                                        {% else %}
+                                            <span class="text-muted">View only</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="9" class="text-center text-muted py-4">Không có abnormal report.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="abnormalModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <form id="abnormalForm" method="post">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5">Cập nhật lỗi / bất thường</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">ID</label>
+                            <input class="form-control" id="modalResultId" type="text" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Ký hiệu</label>
+                            <input class="form-control" id="modalSymbol" type="text" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Ngày tháng phát sinh</label>
+                            <input class="form-control" id="modalDate" type="text" readonly>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kết quả</label>
+                        <select class="form-select" id="modalResult" name="result" required>
+                            <option value="x">x</option>
+                            <option value="△">△</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Hạng mục check</label>
+                        <textarea class="form-control" id="modalContent" rows="2" readonly></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nội dung bất thường</label>
+                        <textarea class="form-control" id="modalNote" name="abnormal_content" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Đối sách xử lý</label>
+                        <textarea class="form-control" id="modalCountermeasure" name="countermeasure" rows="3"></textarea>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Ngày xác nhận sau khi xử lý</label>
+                            <input class="form-control" id="modalConfirmDate" name="confirm_date_before_fix" type="date">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Trạng thái</label>
+                            <select class="form-select" id="modalStatus" name="status">
+                                <option value="open">open</option>
+                                <option value="processing">processing</option>
+                                <option value="fixed">fixed</option>
+                                <option value="confirmed">confirmed</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label">Kết quả xác nhận sau khi xử lý</label>
+                        <textarea class="form-control" id="modalResultAfterFix" name="result_after_fix" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Đóng</button>
+                    <button class="btn btn-primary" type="submit">Lưu xử lý</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% if current_user and current_user.role == 'admin' %}
+    </div>
+</div>
+{% endif %}
 {% endblock %}

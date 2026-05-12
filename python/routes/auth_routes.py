@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import wraps
 
 from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
@@ -8,7 +10,7 @@ from models import User
 auth_bp = Blueprint("auth", __name__)
 
 
-def get_current_user():
+def get_current_user() -> User | None:
     if hasattr(g, "current_user"):
         return g.current_user
 
@@ -21,7 +23,7 @@ def login_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
         if not get_current_user():
-            flash("Vui lòng đăng nhập để tiếp tục.", "warning")
+            flash("Vui long dang nhap de tiep tuc.", "warning")
             return redirect(url_for("auth.login"))
         return view(*args, **kwargs)
 
@@ -33,25 +35,10 @@ def admin_required(view):
     def wrapped_view(*args, **kwargs):
         user = get_current_user()
         if not user:
-            flash("Vui lòng đăng nhập để tiếp tục.", "warning")
+            flash("Vui long dang nhap de tiep tuc.", "warning")
             return redirect(url_for("auth.login"))
         if user.role != "admin":
-            flash("Bạn không có quyền truy cập trang này.", "danger")
-            return redirect(url_for("checklist.dashboard"))
-        return view(*args, **kwargs)
-
-    return wrapped_view
-
-
-def manager_or_admin_required(view):
-    @wraps(view)
-    def wrapped_view(*args, **kwargs):
-        user = get_current_user()
-        if not user:
-            flash("Vui lòng đăng nhập để tiếp tục.", "warning")
-            return redirect(url_for("auth.login"))
-        if user.role not in {"admin", "manager"}:
-            flash("Chỉ admin hoặc manager mới được thực hiện chức năng này.", "danger")
+            flash("Ban khong co quyen truy cap trang nay.", "danger")
             return redirect(url_for("checklist.dashboard"))
         return view(*args, **kwargs)
 
@@ -59,7 +46,7 @@ def manager_or_admin_required(view):
 
 
 @auth_bp.before_app_request
-def load_logged_in_user():
+def load_logged_in_user() -> None:
     g.current_user = get_current_user()
 
 
@@ -72,19 +59,15 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        if not username or not password:
-            flash("Username và password là bắt buộc.", "danger")
-            return render_template("login.html")
-
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(username=username, is_active=True).first()
         if not user or not user.check_password(password):
-            flash("Sai username hoặc password.", "danger")
+            flash("Sai username hoac password.", "danger")
             return render_template("login.html", username=username)
 
         session.clear()
         session["user_id"] = user.id
         session["role"] = user.role
-        session["name"] = user.name
+        session["lang"] = session.get("lang", "vi")
         flash("Đăng nhập thành công.", "success")
         return redirect(url_for("checklist.dashboard"))
 
@@ -93,6 +76,8 @@ def login():
 
 @auth_bp.route("/logout")
 def logout():
+    lang = session.get("lang", "vi")
     session.clear()
-    flash("Bạn đã đăng xuất.", "info")
+    session["lang"] = lang
+    flash("Da dang xuat.", "info")
     return redirect(url_for("auth.login"))

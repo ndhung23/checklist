@@ -1,99 +1,366 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
 db = SQLAlchemy()
 
-STATUS_DONE = "o"
-STATUS_PENDING = "x"
-STATUS_ABNORMAL = "△"
-VALID_STATUSES = {STATUS_DONE, STATUS_PENDING, STATUS_ABNORMAL}
-VALID_ROLES = {"admin", "manager", "user"}
+ROLE_ADMIN = "admin"
+ROLE_MANAGER = "manager"
+ROLE_LEADER = "leader"
+ROLE_STAFF = "staff"
+VALID_ROLES = {ROLE_ADMIN, ROLE_MANAGER, ROLE_LEADER, ROLE_STAFF}
+
+SHEET_STATUS_DRAFT = "draft"
+SHEET_STATUS_CHECKING = "checking"
+SHEET_STATUS_SUBMITTED = "submitted"
+SHEET_STATUS_CONFIRMED = "confirmed"
+SHEET_STATUS_REJECTED = "rejected"
+VALID_SHEET_STATUSES = {
+    SHEET_STATUS_DRAFT,
+    SHEET_STATUS_CHECKING,
+    SHEET_STATUS_SUBMITTED,
+    SHEET_STATUS_CONFIRMED,
+    SHEET_STATUS_REJECTED,
+}
+
+RESULT_OK = "o"
+RESULT_NG = "x"
+RESULT_ABNORMAL = "△"
+RESULT_EMPTY = ""
+VALID_RESULTS = {RESULT_OK, RESULT_NG, RESULT_ABNORMAL, RESULT_EMPTY}
+
+ABNORMAL_STATUS_OPEN = "open"
+ABNORMAL_STATUS_PROCESSING = "processing"
+ABNORMAL_STATUS_FIXED = "fixed"
+ABNORMAL_STATUS_CONFIRMED = "confirmed"
+ABNORMAL_STATUS_CANCELLED = "cancelled"
+VALID_ABNORMAL_STATUSES = {
+    ABNORMAL_STATUS_OPEN,
+    ABNORMAL_STATUS_PROCESSING,
+    ABNORMAL_STATUS_FIXED,
+    ABNORMAL_STATUS_CONFIRMED,
+    ABNORMAL_STATUS_CANCELLED,
+}
+
+
+class TimestampMixin:
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
 
 
 class User(db.Model):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('admin', 'manager', 'leader', 'staff')",
+            name="ck_users_role",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)
-    name = db.Column(db.String(120), nullable=False)
-    role = db.Column(db.String(20), nullable=False)
-
-    daily_checks = db.relationship("DailyCheck", back_populates="user", cascade="all, delete-orphan")
-    abnormal_notes = db.relationship("AbnormalNote", back_populates="user", cascade="all, delete-orphan")
-    confirmations = db.relationship("DailyConfirmation", back_populates="user", cascade="all, delete-orphan")
-
-    def set_password(self, raw_password):
-        self.password = generate_password_hash(raw_password)
-
-    def check_password(self, raw_password):
-        return check_password_hash(self.password, raw_password)
-
-
-class Category(db.Model):
-    __tablename__ = "categories"
-
-    id = db.Column(db.Integer, primary_key=True)
-    symbol = db.Column(db.String(30), nullable=False)
-    category = db.Column(db.String(255), nullable=False)
-    limit_time = db.Column(db.Time, nullable=False)
+    username = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    full_name = db.Column(db.String(120), nullable=False)
+    employee_code = db.Column(db.String(30), unique=True, nullable=False, index=True)
+    department = db.Column(db.String(120), nullable=False)
+    line_name = db.Column(db.String(120), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default=ROLE_STAFF)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-    daily_checks = db.relationship("DailyCheck", back_populates="source_category")
+    daily_sheets = db.relationship("DailyCheckSheet", back_populates="user")
+    daily_results = db.relationship("DailyCheckResult", back_populates="user")
+    abnormal_reports = db.relationship("AbnormalReport", back_populates="user")
+    owned_confirmations = db.relationship(
+        "DailyConfirmation",
+        foreign_keys="DailyConfirmation.user_id",
+        back_populates="user",
+    )
+    signed_confirmations = db.relationship(
+        "DailyConfirmation",
+        foreign_keys="DailyConfirmation.confirmed_by",
+        back_populates="signer",
+    )
+    user_lines = db.relationship(
+        "UserLine",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    def set_password(self, raw_password: str) -> None:
+        self.password_hash = generate_password_hash(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        return check_password_hash(self.password_hash, raw_password)
+
+    @property
+    def can_confirm(self) -> bool:
+        return self.role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_LEADER}
 
 
-class DailyCheck(db.Model):
-    __tablename__ = "daily_checks"
+class ChecklistTemplate(db.Model):
+    __tablename__ = "checklist_templates"
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    template_name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    version = db.Column(db.String(50), nullable=False, default="1.0")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    checklist_items = db.relationship(
+        "ChecklistItem",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="ChecklistItem.item_order",
+    )
+    daily_sheets = db.relationship("DailyCheckSheet", back_populates="template")
+
+
+class ChecklistItem(db.Model):
+    __tablename__ = "checklist_items"
     __table_args__ = (
-        db.UniqueConstraint("user_id", "category_id", "date", name="uq_daily_check_user_category_date"),
+        UniqueConstraint("template_id", "item_order", name="uq_checklist_items_template_order"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(
+        db.Integer,
+        db.ForeignKey("checklist_templates.id"),
+        nullable=False,
+        index=True,
+    )
+    symbol = db.Column(db.String(20), nullable=False)
+    check_time = db.Column(db.Time, nullable=False, index=True)
+    time_group = db.Column(db.String(100), nullable=False)
+    item_order = db.Column(db.Integer, nullable=False)
+    category_type = db.Column(db.String(50))
+    content = db.Column(db.Text, nullable=False)
+    content_vi = db.Column(db.Text, nullable=False)
+    content_en = db.Column(db.Text)
+    content_ja = db.Column(db.Text)
+    note = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    template = db.relationship("ChecklistTemplate", back_populates="checklist_items")
+    daily_results = db.relationship("DailyCheckResult", back_populates="checklist_item")
+
+
+class DailyCheckSheet(TimestampMixin, db.Model):
+    __tablename__ = "daily_check_sheets"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "template_id",
+            "check_date",
+            name="uq_daily_check_sheet_user_template_date",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'checking', 'submitted', 'confirmed', 'rejected')",
+            name="ck_daily_check_sheets_status",
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=False)
-    symbol = db.Column(db.String(30), nullable=False)
-    category = db.Column(db.String(255), nullable=False)
-    date = db.Column(db.Date, nullable=False, default=date.today, index=True)
-    status = db.Column(db.String(5), nullable=False, default=STATUS_PENDING)
-    limit_time = db.Column(db.Time, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    template_id = db.Column(
+        db.Integer,
+        db.ForeignKey("checklist_templates.id"),
+        nullable=False,
+        index=True,
+    )
+    check_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    month = db.Column(db.Integer, nullable=False)
+    year = db.Column(db.Integer, nullable=False)
+    line_name = db.Column(db.String(120), nullable=False)
+    department = db.Column(db.String(120), nullable=False)
+    shift = db.Column(db.String(50), nullable=False, default="day")
+    status = db.Column(db.String(20), nullable=False, default=SHEET_STATUS_DRAFT)
 
-    user = db.relationship("User", back_populates="daily_checks")
-    source_category = db.relationship("Category", back_populates="daily_checks")
-    abnormal_note = db.relationship("AbnormalNote", back_populates="daily_check", uselist=False, cascade="all, delete-orphan")
+    user = db.relationship("User", back_populates="daily_sheets")
+    template = db.relationship("ChecklistTemplate", back_populates="daily_sheets")
+    results = db.relationship(
+        "DailyCheckResult",
+        back_populates="daily_sheet",
+        cascade="all, delete-orphan",
+    )
+    abnormal_reports = db.relationship(
+        "AbnormalReport",
+        back_populates="daily_sheet",
+        cascade="all, delete-orphan",
+    )
+    confirmations = db.relationship(
+        "DailyConfirmation",
+        back_populates="daily_sheet",
+        cascade="all, delete-orphan",
+    )
 
 
-class AbnormalNote(db.Model):
-    __tablename__ = "abnormal_notes"
+class DailyCheckResult(TimestampMixin, db.Model):
+    __tablename__ = "daily_check_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "daily_sheet_id",
+            "checklist_item_id",
+            name="uq_daily_check_results_sheet_item",
+        ),
+        CheckConstraint(
+            "result IN ('o', 'x', '△', '')",
+            name="ck_daily_check_results_result",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    daily_check_id = db.Column(db.Integer, db.ForeignKey("daily_checks.id"), unique=True, nullable=False)
-    symbol = db.Column(db.String(30), nullable=False)
-    category = db.Column(db.String(255), nullable=False)
-    note = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    daily_sheet_id = db.Column(
+        db.Integer,
+        db.ForeignKey("daily_check_sheets.id"),
+        nullable=False,
+        index=True,
+    )
+    checklist_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("checklist_items.id"),
+        nullable=False,
+        index=True,
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    check_date = db.Column(db.Date, nullable=False, index=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    check_time = db.Column(db.Time, nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False)
+    result = db.Column(db.String(5), nullable=True, default=RESULT_EMPTY)
+    checked_at = db.Column(db.DateTime)
+    abnormal_note = db.Column(db.Text)
 
-    user = db.relationship("User", back_populates="abnormal_notes")
-    daily_check = db.relationship("DailyCheck", back_populates="abnormal_note")
+    daily_sheet = db.relationship("DailyCheckSheet", back_populates="results")
+    checklist_item = db.relationship("ChecklistItem", back_populates="daily_results")
+    user = db.relationship("User", back_populates="daily_results")
+    abnormal_reports = db.relationship(
+        "AbnormalReport",
+        back_populates="daily_check_result",
+        cascade="all, delete-orphan",
+    )
+
+
+class AbnormalReport(TimestampMixin, db.Model):
+    __tablename__ = "abnormal_reports"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open', 'processing', 'fixed', 'confirmed', 'cancelled')",
+            name="ck_abnormal_reports_status",
+        ),
+        UniqueConstraint(
+            "daily_check_result_id",
+            name="uq_abnormal_reports_daily_result",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    daily_sheet_id = db.Column(
+        db.Integer,
+        db.ForeignKey("daily_check_sheets.id"),
+        nullable=False,
+        index=True,
+    )
+    daily_check_result_id = db.Column(
+        db.Integer,
+        db.ForeignKey("daily_check_results.id"),
+        nullable=False,
+        index=True,
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    occurred_date = db.Column(db.Date, nullable=False)
+    abnormal_content = db.Column(db.Text, nullable=False)
+    countermeasure = db.Column(db.Text)
+    confirm_date_before_fix = db.Column(db.Date)
+    result_after_fix = db.Column(db.Text)
+    status = db.Column(db.String(20), nullable=False, default=ABNORMAL_STATUS_OPEN)
+
+    daily_sheet = db.relationship("DailyCheckSheet", back_populates="abnormal_reports")
+    daily_check_result = db.relationship("DailyCheckResult", back_populates="abnormal_reports")
+    user = db.relationship("User", back_populates="abnormal_reports")
 
 
 class DailyConfirmation(db.Model):
     __tablename__ = "daily_confirmations"
     __table_args__ = (
-        db.UniqueConstraint("user_id", "date", name="uq_confirmation_user_date"),
+        UniqueConstraint(
+            "daily_sheet_id",
+            "confirmed_role",
+            name="uq_daily_confirmations_sheet_role",
+        ),
+        CheckConstraint(
+            "confirmed_role IN ('admin', 'manager', 'leader')",
+            name="ck_daily_confirmations_role",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    daily_sheet_id = db.Column(
+        db.Integer,
+        db.ForeignKey("daily_check_sheets.id"),
+        nullable=False,
+        index=True,
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    confirmed_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    confirmed_by_name = db.Column(db.String(120), nullable=False)
+    confirmed_role = db.Column(db.String(20), nullable=False)
+    confirmed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    signature_note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    daily_sheet = db.relationship("DailyCheckSheet", back_populates="confirmations")
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id],
+        back_populates="owned_confirmations",
+    )
+    signer = db.relationship(
+        "User",
+        foreign_keys=[confirmed_by],
+        back_populates="signed_confirmations",
+    )
+
+
+class Line(db.Model):
+    __tablename__ = "lines"
+
+    id = db.Column(db.Integer, primary_key=True)
+    line_name = db.Column(db.String(120), unique=True, nullable=False)
+    department = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    user_lines = db.relationship(
+        "UserLine",
+        back_populates="line",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserLine(db.Model):
+    __tablename__ = "user_lines"
+    __table_args__ = (
+        UniqueConstraint("user_id", "line_id", name="uq_user_lines_user_line"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    date = db.Column(db.Date, nullable=False, default=date.today, index=True)
-    confirmed_by = db.Column(db.Integer, nullable=False)
-    confirmed_by_name = db.Column(db.String(120), nullable=False)
-    confirmed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    signature_note = db.Column(db.Text, nullable=True)
+    line_id = db.Column(db.Integer, db.ForeignKey("lines.id"), nullable=False, index=True)
 
-    user = db.relationship("User", back_populates="confirmations")
+    user = db.relationship("User", back_populates="user_lines")
+    line = db.relationship("Line", back_populates="user_lines")

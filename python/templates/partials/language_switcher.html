@@ -1,0 +1,7 @@
+<div class="language-switcher">
+    <a class="{% if current_lang == 'vi' %}active{% endif %}" href="{{ url_for('set_language', lang='vi') }}">Tiếng Việt</a>
+    <span>|</span>
+    <a class="{% if current_lang == 'en' %}active{% endif %}" href="{{ url_for('set_language', lang='en') }}">English</a>
+    <span>|</span>
+    <a class="{% if current_lang == 'ja' %}active{% endif %}" href="{{ url_for('set_language', lang='ja') }}">日本語</a>
+</div>
