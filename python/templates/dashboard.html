@@ -13,7 +13,7 @@
 <section class="hero-panel mb-4">
     <div>
         <h1 class="page-title mb-2">{{ t('dashboard') }}</h1>
-        <p class="page-subtitle mb-0">Checklist master duoc co dinh ca nam. Khi chon ngay moi he thong se tu dong tao full danh sach hang muc voi ket qua rong neu chua co du lieu.</p>
+        <p class="page-subtitle mb-0">Checklist master được cố định cả năm. Khi chọn ngày mới hệ thống sẽ tự động tạo đầy đủ danh sách hạng mục với kết quả rỗng nếu chưa có dữ liệu.</p>
     </div>
     <div class="hero-actions no-print">
         {% if selected_sheet %}
@@ -71,6 +71,11 @@
         <div class="col-sm-6 col-lg-1">
             <button class="btn btn-primary w-100" type="submit">{{ t('filters') }}</button>
         </div>
+        {% if current_user and current_user.role == 'staff' and outlook_url %}
+            <div class="col-sm-6 col-lg-2">
+                <a class="btn btn-outline-primary w-100" href="{{ outlook_url }}">Gui Outlook</a>
+            </div>
+        {% endif %}
     </div>
 </form>
 
@@ -150,6 +155,16 @@
                 </div>
                 {% if selected_sheet %}
                     <div class="d-flex gap-2 no-print">
+                        {% if can_submit_selected and selected_sheet.status not in ['submitted', 'confirmed'] %}
+                            <form method="post" action="{{ url_for('checklist.submit_sheet', sheet_id=selected_sheet.id) }}">
+                                <button class="btn btn-sm btn-primary" type="submit">Nộp checklist</button>
+                            </form>
+                        {% endif %}
+                        {% if can_confirm_selected %}
+                            <form method="post" action="{{ url_for('checklist.confirm_sheet', sheet_id=selected_sheet.id) }}">
+                                <button class="btn btn-sm btn-success" type="submit">Xác nhận</button>
+                            </form>
+                        {% endif %}
                         <a class="btn btn-sm btn-outline-primary" href="#abnormal-section">{{ t('abnormal_history') }}</a>
                         <a class="btn btn-sm btn-outline-dark" href="{{ url_for('checklist.print_checklist', sheet_id=selected_sheet.id) }}" target="_blank">{{ t('print_checklist') }}</a>
                     </div>
@@ -250,7 +265,7 @@
             <div class="card-header bg-white border-0 pb-0 d-flex justify-content-between align-items-center">
                 <div>
                     <h2 class="section-title mb-1">{{ t('abnormal_history') }}</h2>
-                    <div class="small text-muted">Chi hien x va △ trong ngay hien tai.</div>
+                    <div class="small text-muted">Chỉ hiện x và △ trong ngày hiện tại.</div>
                 </div>
                 {% if selected_sheet %}
                     <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('checklist.abnormal_reports', date=selected_date, line=selected_line, user_id=selected_user_id, keyword=keyword, result_filter=result_filter, sheet_id=selected_sheet.id) }}">Mở tab lỗi</a>

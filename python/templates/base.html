@@ -9,7 +9,66 @@
 </head>
 <body>
     {% block body %}
-    <div class="container-fluid main-wrapper">
+
+    {# ===== THANH THÔNG BÁO CỐ ĐỊNH TRÊN CÙNG ===== #}
+    {% if current_user and notifications is defined and notifications %}
+    <div id="notif-bar" class="notif-bar no-print">
+        <div class="notif-bar-inner">
+            <div class="notif-bar-left">
+                <span class="notif-bar-icon">🔔</span>
+                <span class="notif-bar-count badge">{{ notifications|length }}</span>
+                <span class="notif-bar-label">thông báo chưa đọc</span>
+            </div>
+            <div class="notif-bar-preview" id="notif-bar-preview">
+                {% if notifications %}
+                    <span class="notif-bar-title-text">{{ notifications[0].title }}</span>
+                {% endif %}
+            </div>
+            <div class="notif-bar-actions">
+                <button class="notif-bar-toggle-btn" id="notif-toggle-btn" type="button" title="Xem tất cả thông báo">
+                    <span id="notif-toggle-icon">▼</span>
+                </button>
+            </div>
+        </div>
+
+        {# Panel thông báo mở rộng #}
+        <div class="notif-bar-panel" id="notif-bar-panel" style="display:none;">
+            <div class="notif-panel-header">
+                <span class="fw-bold">Thông báo nhắc nhở</span>
+                <small class="text-muted ms-2">Hệ thống tự động tạo theo ngày, tuần và tháng</small>
+            </div>
+            <div class="notif-panel-list">
+                {% for notification in notifications %}
+                <div class="notif-panel-item notif-cat-{{ notification.category }}" id="notif-item-{{ notification.id }}">
+                    <div class="notif-panel-item-body">
+                        <div class="notif-panel-item-title">{{ notification.title }}</div>
+                        <div class="notif-panel-item-msg">{{ notification.message }}</div>
+                        <div class="notif-panel-item-meta">
+                            <span class="badge notif-period-badge notif-period-{{ notification.period_type }}">
+                                {% if notification.period_type == 'day' %}Ngày
+                                {% elif notification.period_type == 'week' %}Tuần
+                                {% elif notification.period_type == 'month' %}Tháng
+                                {% else %}{{ notification.period_type }}{% endif %}
+                            </span>
+                            {{ notification.target_date|date_local }}
+                        </div>
+                    </div>
+                    <div class="notif-panel-item-actions">
+                        {% if notification.related_sheet_id %}
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('checklist.dashboard', date=notification.target_date.isoformat(), sheet_id=notification.related_sheet_id) }}">Mở checklist</a>
+                        {% endif %}
+                        <form method="post" action="{{ url_for('checklist.mark_notification_read', notification_id=notification.id) }}" class="notif-dismiss-form">
+                            <button class="btn btn-sm btn-ghost-dismiss" type="submit" title="Ẩn thông báo này">✕</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="container-fluid main-wrapper {% if current_user and notifications is defined and notifications %}has-notif-bar{% endif %}">
         <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm rounded-3 px-3 px-lg-4 mb-4">
             <div class="container-fluid px-0">
                 <a class="navbar-brand fw-bold" href="{{ url_for('checklist.dashboard') }}">Daily Checklist Factory Inspection</a>

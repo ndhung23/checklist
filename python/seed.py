@@ -55,11 +55,13 @@ def make_user(
     department: str,
     line_name: str,
     role: str,
+    outlook_email: str,
 ) -> User:
     user = User(
         username=username,
         full_name=full_name,
         employee_code=employee_code,
+        outlook_email=outlook_email,
         department=department,
         line_name=line_name,
         role=role,
@@ -241,14 +243,14 @@ def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
     db.session.add_all(lines)
 
     users = {
-        "admin": make_user("admin", "123456", "System Admin", "EMP001", "Administration", "Line A", ROLE_ADMIN),
-        "manager01": make_user("manager01", "123456", "Nguyen Van Manager", "EMP002", "Management", "Line A", ROLE_MANAGER),
-        "leader01": make_user("leader01", "123456", "Tran Thi Leader 01", "EMP003", "TL/SL", "Line A", ROLE_LEADER),
-        "leader02": make_user("leader02", "123456", "Tran Thi Leader 02", "EMP004", "Assembly", "Line C", ROLE_LEADER),
-        "staff01": make_user("staff01", "123456", "Pham Van Staff 01", "EMP005", "TL/SL", "Line A", ROLE_STAFF),
-        "staff02": make_user("staff02", "123456", "Le Thi Staff 02", "EMP006", "TL/SL", "Line B", ROLE_STAFF),
-        "staff03": make_user("staff03", "123456", "Do Van Staff 03", "EMP007", "Assembly", "Line C", ROLE_STAFF),
-        "staff04": make_user("staff04", "123456", "Vu Thi Staff 04", "EMP008", "Inspection", "Line D", ROLE_STAFF),
+        "admin": make_user("admin", "123456", "System Admin", "EMP001", "Administration", "Line A", ROLE_ADMIN, "admin@example.com"),
+        "manager01": make_user("manager01", "123456", "Nguyen Van Manager", "EMP002", "Management", "Line A", ROLE_MANAGER, "manager01@example.com"),
+        "leader01": make_user("leader01", "123456", "Tran Thi Leader 01", "EMP003", "TL/SL", "Line A", ROLE_LEADER, "leader01@example.com"),
+        "leader02": make_user("leader02", "123456", "Tran Thi Leader 02", "EMP004", "Assembly", "Line C", ROLE_LEADER, "leader02@example.com"),
+        "staff01": make_user("staff01", "123456", "Pham Van Staff 01", "EMP005", "TL/SL", "Line A", ROLE_STAFF, "staff01@example.com"),
+        "staff02": make_user("staff02", "123456", "Le Thi Staff 02", "EMP006", "TL/SL", "Line B", ROLE_STAFF, "staff02@example.com"),
+        "staff03": make_user("staff03", "123456", "Do Van Staff 03", "EMP007", "Assembly", "Line C", ROLE_STAFF, "staff03@example.com"),
+        "staff04": make_user("staff04", "123456", "Vu Thi Staff 04", "EMP008", "Inspection", "Line D", ROLE_STAFF, "staff04@example.com"),
     }
     db.session.add_all(users.values())
     db.session.flush()

@@ -83,6 +83,25 @@ body {
   background: #ffffff;
 }
 
+.notification-panel {
+  background: #ffffff;
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -394,4 +413,230 @@ body {
   .print-note {
     box-shadow: none !important;
   }
+}
+
+/* ===== THANH THÔNG BÁO CỐ ĐỊNH TRÊN CÙNG (kiểu Facebook) ===== */
+.notif-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1050;
+  background: linear-gradient(90deg, #1d4ed8 0%, #2563eb 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  font-size: 14px;
+}
+
+.notif-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  min-height: 44px;
+}
+
+.notif-bar-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  animation: notif-bell 2.5s ease-in-out infinite;
+}
+
+@keyframes notif-bell {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(-15deg); }
+  20% { transform: rotate(15deg); }
+  30% { transform: rotate(-10deg); }
+  40% { transform: rotate(10deg); }
+  50% { transform: rotate(0deg); }
+}
+
+.notif-bar-count {
+  background: #ef4444;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.notif-bar-label {
+  color: rgba(255,255,255,0.85);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.notif-bar-preview {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgba(255,255,255,0.9);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.notif-bar-title-text {
+  font-weight: 600;
+}
+
+.notif-bar-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-bar-toggle-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  line-height: 1.4;
+}
+
+.notif-bar-toggle-btn:hover {
+  background: rgba(255,255,255,0.28);
+}
+
+/* Panel mở rộng */
+.notif-bar-panel {
+  background: #ffffff;
+  border-top: 1px solid #dbeafe;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.notif-panel-header {
+  padding: 10px 20px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+  font-size: 13px;
+  color: #374151;
+}
+
+.notif-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.notif-panel-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #ffffff;
+  transition: background 0.15s;
+}
+
+.notif-panel-item:hover {
+  background: #f0f7ff;
+}
+
+/* Màu theo loại thông báo */
+.notif-panel-item.notif-cat-reminder {
+  border-left: 4px solid #f59e0b;
+}
+
+.notif-panel-item.notif-cat-confirmed {
+  border-left: 4px solid #16a34a;
+}
+
+.notif-panel-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-panel-item-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #111827;
+  margin-bottom: 3px;
+}
+
+.notif-panel-item-msg {
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.notif-panel-item-meta {
+  font-size: 11px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notif-period-badge {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.notif-period-day {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.notif-period-week {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.notif-period-month {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.notif-panel-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.btn-ghost-dismiss {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  color: #9ca3af;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-ghost-dismiss:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* Đẩy nội dung xuống khi có thanh thông báo */
+.has-notif-bar {
+  padding-top: calc(44px + 20px);
+}
+
+/* Khi panel mở, tăng thêm padding */
+body.notif-panel-open .has-notif-bar {
+  padding-top: calc(44px + 20px);
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from flask import Flask, g, redirect, request, session
+from sqlalchemy import inspect, text
 
 from config import Config
 from models import db
@@ -81,6 +82,21 @@ def get_item_content(item, lang: str) -> str:
     return item.content_vi or item.content
 
 
+def ensure_database_schema(app: Flask) -> None:
+    with app.app_context():
+        db.create_all()
+        inspector = inspect(db.engine)
+
+        if "users" in inspector.get_table_names():
+            user_columns = {column["name"] for column in inspector.get_columns("users")}
+            if "outlook_email" not in user_columns:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN outlook_email VARCHAR(255)"))
+                db.session.commit()
+
+        if "notifications" not in inspector.get_table_names():
+            db.create_all()
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
@@ -89,6 +105,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(checklist_bp)
     app.register_blueprint(admin_bp)
+    ensure_database_schema(app)
 
     @app.before_request
     def ensure_language():
@@ -97,17 +114,30 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_globals():
+        from flask import g
+        from models import Notification, NOTIFICATION_UNREAD
         current_lang = session.get("lang", "vi")
 
         def t(key: str) -> str:
             return TRANSLATIONS.get(current_lang, TRANSLATIONS["vi"]).get(key, key)
 
+        current_user = getattr(g, "current_user", None)
+        notifications = []
+        if current_user:
+            notifications = (
+                Notification.query.filter_by(user_id=current_user.id, status=NOTIFICATION_UNREAD)
+                .order_by(Notification.created_at.desc(), Notification.id.desc())
+                .limit(20)
+                .all()
+            )
+
         return {
-            "current_user": getattr(g, "current_user", None),
+            "current_user": current_user,
             "current_lang": current_lang,
             "t": t,
             "get_item_content": get_item_content,
             "current_endpoint": request.endpoint or "",
+            "notifications": notifications,
         }
 
     @app.template_filter("date_local")

@@ -15,6 +15,10 @@ ROLE_LEADER = "leader"
 ROLE_STAFF = "staff"
 VALID_ROLES = {ROLE_ADMIN, ROLE_MANAGER, ROLE_LEADER, ROLE_STAFF}
 
+NOTIFICATION_UNREAD = "unread"
+NOTIFICATION_READ = "read"
+VALID_NOTIFICATION_STATUSES = {NOTIFICATION_UNREAD, NOTIFICATION_READ}
+
 SHEET_STATUS_DRAFT = "draft"
 SHEET_STATUS_CHECKING = "checking"
 SHEET_STATUS_SUBMITTED = "submitted"
@@ -72,6 +76,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     full_name = db.Column(db.String(120), nullable=False)
     employee_code = db.Column(db.String(30), unique=True, nullable=False, index=True)
+    outlook_email = db.Column(db.String(255), nullable=True)
     department = db.Column(db.String(120), nullable=False)
     line_name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False, default=ROLE_STAFF)
@@ -93,6 +98,11 @@ class User(db.Model):
     )
     user_lines = db.relationship(
         "UserLine",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    notifications = db.relationship(
+        "Notification",
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -364,3 +374,29 @@ class UserLine(db.Model):
 
     user = db.relationship("User", back_populates="user_lines")
     line = db.relationship("Line", back_populates="user_lines")
+
+
+class Notification(TimestampMixin, db.Model):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedupe_key", name="uq_notifications_user_dedupe"),
+        CheckConstraint(
+            "status IN ('unread', 'read')",
+            name="ck_notifications_status",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(50), nullable=False, default="reminder", index=True)
+    period_type = db.Column(db.String(20), nullable=False, index=True)
+    target_date = db.Column(db.Date, nullable=False, index=True)
+    related_sheet_id = db.Column(db.Integer, db.ForeignKey("daily_check_sheets.id"), nullable=True, index=True)
+    dedupe_key = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default=NOTIFICATION_UNREAD, index=True)
+    read_at = db.Column(db.DateTime)
+
+    user = db.relationship("User", back_populates="notifications")
+    related_sheet = db.relationship("DailyCheckSheet")

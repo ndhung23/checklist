@@ -34,6 +34,7 @@ def users():
                 username=request.form.get("username", "").strip(),
                 full_name=request.form.get("full_name", "").strip(),
                 employee_code=request.form.get("employee_code", "").strip(),
+                outlook_email=request.form.get("outlook_email", "").strip() or None,
                 department=request.form.get("department", "").strip() or "Unknown",
                 line_name=request.form.get("line_name", "").strip() or "Line A",
                 role=request.form.get("role", ROLE_STAFF).strip(),
@@ -50,6 +51,7 @@ def users():
             user.username = request.form.get("username", "").strip()
             user.full_name = request.form.get("full_name", "").strip()
             user.employee_code = request.form.get("employee_code", "").strip()
+            user.outlook_email = request.form.get("outlook_email", "").strip() or None
             user.department = request.form.get("department", "").strip() or user.department
             user.line_name = request.form.get("line_name", "").strip() or user.line_name
             user.role = request.form.get("role", user.role).strip()

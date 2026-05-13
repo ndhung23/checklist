@@ -25,6 +25,10 @@
                 <label class="form-label">Employee code</label>
                 <input class="form-control" name="employee_code" value="{{ edit_user.employee_code if edit_user else '' }}" required>
             </div>
+            <div class="col-md-4">
+                <label class="form-label">Outlook</label>
+                <input class="form-control" type="email" name="outlook_email" value="{{ edit_user.outlook_email if edit_user and edit_user.outlook_email else '' }}" placeholder="name@company.com">
+            </div>
             <div class="col-md-3">
                 <label class="form-label">Department</label>
                 <input class="form-control" name="department" value="{{ edit_user.department if edit_user else '' }}" required>
@@ -93,6 +97,7 @@
                         <th>STT</th>
                         <th>Username</th>
                         <th>Full name</th>
+                        <th>Outlook</th>
                         <th>Role</th>
                         <th>Department</th>
                         <th>Line</th>
@@ -106,6 +111,7 @@
                             <td>{{ loop.index }}</td>
                             <td>{{ user.username }}</td>
                             <td>{{ user.full_name }}</td>
+                            <td>{{ user.outlook_email or '-' }}</td>
                             <td>{{ user.role }}</td>
                             <td>{{ user.department }}</td>
                             <td>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from urllib.parse import quote
 
 from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
@@ -10,15 +11,22 @@ from models import (
     ABNORMAL_STATUS_CANCELLED,
     ABNORMAL_STATUS_OPEN,
     ChecklistItem,
+    DailyConfirmation,
     DailyCheckResult,
     DailyCheckSheet,
     Line,
+    NOTIFICATION_READ,
+    NOTIFICATION_UNREAD,
+    Notification,
     RESULT_ABNORMAL,
     RESULT_EMPTY,
     RESULT_NG,
     RESULT_OK,
+    SHEET_STATUS_CONFIRMED,
+    SHEET_STATUS_SUBMITTED,
     VALID_ABNORMAL_STATUSES,
     User,
+    UserLine,
     db,
 )
 from routes.auth_routes import login_required
@@ -43,6 +51,353 @@ def managed_line_names(user: User) -> set[str]:
     return {mapping.line.line_name for mapping in user.user_lines}
 
 
+def period_bounds(anchor_date: date, period_type: str) -> tuple[date, date]:
+    if period_type == "week":
+        start = anchor_date - timedelta(days=anchor_date.weekday())
+        return start, start + timedelta(days=6)
+    if period_type == "month":
+        start = anchor_date.replace(day=1)
+        if start.month == 12:
+            next_month = start.replace(year=start.year + 1, month=1)
+        else:
+            next_month = start.replace(month=start.month + 1)
+        return start, next_month - timedelta(days=1)
+    return anchor_date, anchor_date
+
+
+def period_label(period_type: str) -> str:
+    return {"day": "ngay", "week": "tuan", "month": "thang"}.get(period_type, period_type)
+
+
+def submitted_statuses() -> set[str]:
+    return {"submitted", "confirmed"}
+
+
+def sheet_is_submitted(sheet: DailyCheckSheet) -> bool:
+    return sheet.status in submitted_statuses()
+
+
+def sheet_has_confirmation(sheet: DailyCheckSheet, roles: set[str]) -> bool:
+    return any(item.confirmed_role in roles for item in sheet.confirmations)
+
+
+def leader_users_for_line(line_name: str) -> list[User]:
+    return (
+        User.query.join(UserLine)
+        .join(Line)
+        .filter(
+            User.role == "leader",
+            User.is_active.is_(True),
+            Line.line_name == line_name,
+        )
+        .order_by(User.full_name.asc())
+        .all()
+    )
+
+
+def higher_level_users() -> list[User]:
+    return (
+        User.query.filter(User.role.in_(["manager", "admin"]), User.is_active.is_(True))
+        .order_by(User.role.desc(), User.full_name.asc())
+        .all()
+    )
+
+
+def upsert_notification(
+    user: User,
+    title: str,
+    message: str,
+    period_type: str,
+    target_date: date,
+    dedupe_key: str,
+    related_sheet_id: int | None = None,
+) -> None:
+    notification = Notification.query.filter_by(user_id=user.id, dedupe_key=dedupe_key).first()
+    if notification is None:
+        db.session.add(
+            Notification(
+                user=user,
+                title=title,
+                message=message,
+                period_type=period_type,
+                target_date=target_date,
+                related_sheet_id=related_sheet_id,
+                dedupe_key=dedupe_key,
+                status=NOTIFICATION_UNREAD,
+            )
+        )
+        return
+
+    notification.title = title
+    notification.message = message
+    notification.period_type = period_type
+    notification.target_date = target_date
+    notification.related_sheet_id = related_sheet_id
+
+
+def resolve_notification(user: User, dedupe_key: str) -> None:
+    notification = Notification.query.filter_by(
+        user_id=user.id,
+        dedupe_key=dedupe_key,
+        status=NOTIFICATION_UNREAD,
+    ).first()
+    if notification:
+        notification.status = NOTIFICATION_READ
+        notification.read_at = datetime.now()
+
+
+def period_label_vi(period_type: str) -> str:
+    return {"day": "trong ngày", "week": "trong tuần", "month": "trong tháng"}.get(period_type, period_type)
+
+
+def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
+    template_id = get_template_id()
+
+    if current_user.role == "staff":
+        # Nhắc nhở nộp checklist theo ngày / tuần / tháng
+        for period_type in ["day", "week", "month"]:
+            start_date, end_date = period_bounds(anchor_date, period_type)
+            sheets = (
+                DailyCheckSheet.query.filter(
+                    DailyCheckSheet.user_id == current_user.id,
+                    DailyCheckSheet.template_id == template_id,
+                    DailyCheckSheet.check_date >= start_date,
+                    DailyCheckSheet.check_date <= end_date,
+                )
+                .order_by(DailyCheckSheet.check_date.asc())
+                .all()
+            )
+            pending_sheets = [sheet for sheet in sheets if not sheet_is_submitted(sheet)]
+            if period_type == "day" and not sheets:
+                pending_sheets = [ensure_daily_sheet_and_results(current_user.id, template_id, anchor_date)]
+            dedupe_key = f"staff-submit:{current_user.id}:{period_type}:{start_date.isoformat()}"
+            if not pending_sheets:
+                resolve_notification(current_user, dedupe_key)
+            else:
+                period_name = {"day": "ngày", "week": "tuần", "month": "tháng"}.get(period_type, period_type)
+                title = f"Nhắc nhở: Nộp checklist {period_name}"
+                message = (
+                    f"Bạn còn {len(pending_sheets)} checklist chưa nộp "
+                    f"từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}. "
+                    f"Vui lòng hoàn thành và nộp cho tổ trưởng xác nhận."
+                )
+                upsert_notification(
+                    current_user,
+                    title,
+                    message,
+                    period_type,
+                    anchor_date,
+                    dedupe_key,
+                    pending_sheets[0].id if pending_sheets else None,
+                )
+
+        # Thông báo checklist đã được leader xác nhận (trong ngày)
+        confirmed_sheets = (
+            DailyCheckSheet.query.filter(
+                DailyCheckSheet.user_id == current_user.id,
+                DailyCheckSheet.template_id == template_id,
+                DailyCheckSheet.check_date == anchor_date,
+                DailyCheckSheet.status == SHEET_STATUS_CONFIRMED,
+            ).all()
+        )
+        for sheet in confirmed_sheets:
+            leader_confirmations = [c for c in sheet.confirmations if c.confirmed_role == "leader"]
+            if leader_confirmations:
+                conf = leader_confirmations[-1]
+                dedupe_key = f"staff-confirmed-by-leader:{current_user.id}:{sheet.id}"
+                title = "✅ Checklist của bạn đã được tổ trưởng xác nhận"
+                message = (
+                    f"Checklist ngày {sheet.check_date.strftime('%d/%m/%Y')} của bạn "
+                    f"đã được tổ trưởng {conf.confirmed_by_name} xác nhận lúc "
+                    f"{conf.confirmed_at.strftime('%H:%M %d/%m/%Y')}."
+                )
+                upsert_notification(
+                    current_user,
+                    title,
+                    message,
+                    "day",
+                    anchor_date,
+                    dedupe_key,
+                    sheet.id,
+                )
+
+        # Thông báo checklist tuần/tháng đã được manager xác nhận
+        for period_type in ["week", "month"]:
+            start_date, end_date = period_bounds(anchor_date, period_type)
+            period_sheets = (
+                DailyCheckSheet.query.filter(
+                    DailyCheckSheet.user_id == current_user.id,
+                    DailyCheckSheet.template_id == template_id,
+                    DailyCheckSheet.check_date >= start_date,
+                    DailyCheckSheet.check_date <= end_date,
+                    DailyCheckSheet.status == SHEET_STATUS_CONFIRMED,
+                ).all()
+            )
+            for sheet in period_sheets:
+                manager_confirmations = [c for c in sheet.confirmations if c.confirmed_role in {"manager", "admin"}]
+                if manager_confirmations:
+                    conf = manager_confirmations[-1]
+                    period_name = "tuần" if period_type == "week" else "tháng"
+                    dedupe_key = f"staff-confirmed-by-manager:{current_user.id}:{period_type}:{sheet.id}"
+                    title = f"✅ Checklist {period_name} của bạn đã được quản lý xác nhận"
+                    message = (
+                        f"Checklist {period_name} (từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}) "
+                        f"đã được {conf.confirmed_by_name} xác nhận lúc {conf.confirmed_at.strftime('%H:%M %d/%m/%Y')}."
+                    )
+                    upsert_notification(
+                        current_user,
+                        title,
+                        message,
+                        period_type,
+                        anchor_date,
+                        dedupe_key,
+                        sheet.id,
+                    )
+
+    if current_user.role == "leader":
+        # Nhắc xác nhận checklist staff trong ngày
+        line_names = managed_line_names(current_user)
+        sheets = (
+            DailyCheckSheet.query.join(User)
+            .filter(
+                User.role == "staff",
+                DailyCheckSheet.line_name.in_(line_names),
+                DailyCheckSheet.check_date == anchor_date,
+            )
+            .all()
+        )
+        pending_sheets = [
+            sheet
+            for sheet in sheets
+            if sheet_is_submitted(sheet) and not sheet_has_confirmation(sheet, {"leader"})
+        ]
+        dedupe_key = f"leader-confirm:{current_user.id}:day:{anchor_date.isoformat()}"
+        if pending_sheets:
+            upsert_notification(
+                current_user,
+                "🔔 Nhắc nhở: Xác nhận checklist nhân viên trong ngày",
+                f"Còn {len(pending_sheets)} checklist của nhân viên chưa được tổ trưởng xác nhận ngày {anchor_date.strftime('%d/%m/%Y')}. Vui lòng xem xét và xác nhận.",
+                "day",
+                anchor_date,
+                dedupe_key,
+                pending_sheets[0].id,
+            )
+        else:
+            resolve_notification(current_user, dedupe_key)
+
+        # Nhắc nộp báo cáo tuần/tháng lên manager
+        for period_type in ["week", "month"]:
+            start_date, end_date = period_bounds(anchor_date, period_type)
+            period_sheets = (
+                DailyCheckSheet.query.filter(
+                    DailyCheckSheet.user_id == current_user.id,
+                    DailyCheckSheet.template_id == template_id,
+                    DailyCheckSheet.check_date >= start_date,
+                    DailyCheckSheet.check_date <= end_date,
+                )
+                .order_by(DailyCheckSheet.check_date.asc())
+                .all()
+            )
+            pending_period = [s for s in period_sheets if not sheet_is_submitted(s)]
+            period_name = "tuần" if period_type == "week" else "tháng"
+            dedupe_key_period = f"leader-submit:{current_user.id}:{period_type}:{start_date.isoformat()}"
+            if pending_period:
+                upsert_notification(
+                    current_user,
+                    f"🔔 Nhắc nhở: Nộp báo cáo {period_name} lên quản lý",
+                    f"Bạn còn {len(pending_period)} checklist {period_name} chưa nộp (từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}). Vui lòng hoàn thành và nộp lên quản lý xác nhận.",
+                    period_type,
+                    anchor_date,
+                    dedupe_key_period,
+                    pending_period[0].id,
+                )
+            else:
+                resolve_notification(current_user, dedupe_key_period)
+
+    if current_user.role in {"manager", "admin"}:
+        # Nhắc xác nhận checklist tổ trưởng theo tuần/tháng
+        for period_type in ["week", "month"]:
+            start_date, end_date = period_bounds(anchor_date, period_type)
+            sheets = (
+                DailyCheckSheet.query.join(User)
+                .filter(
+                    User.role == "leader",
+                    DailyCheckSheet.check_date >= start_date,
+                    DailyCheckSheet.check_date <= end_date,
+                )
+                .all()
+            )
+            pending_sheets = [
+                sheet
+                for sheet in sheets
+                if sheet_is_submitted(sheet) and not sheet_has_confirmation(sheet, {"manager", "admin"})
+            ]
+            period_name = "tuần" if period_type == "week" else "tháng"
+            dedupe_key = f"manager-confirm:{current_user.id}:{period_type}:{start_date.isoformat()}"
+            if not pending_sheets:
+                resolve_notification(current_user, dedupe_key)
+            else:
+                upsert_notification(
+                    current_user,
+                    f"🔔 Nhắc nhở: Xác nhận báo cáo {period_name} của tổ trưởng",
+                    f"Còn {len(pending_sheets)} checklist của tổ trưởng chưa được quản lý xác nhận "
+                    f"từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}. Vui lòng xem xét và xác nhận.",
+                    period_type,
+                    anchor_date,
+                    dedupe_key,
+                    pending_sheets[0].id,
+                )
+
+    db.session.commit()
+
+
+def current_notifications(user: User) -> list[Notification]:
+    return (
+        Notification.query.filter_by(user_id=user.id, status=NOTIFICATION_UNREAD)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .limit(10)
+        .all()
+    )
+
+
+def build_print_text(sheet: DailyCheckSheet | None, results: list[DailyCheckResult]) -> str:
+    if not sheet:
+        return ""
+    lines = [
+        "Noi dung file in checklist",
+        f"Nguoi thuc hien: {sheet.user.full_name}",
+        f"Ma NV: {sheet.user.employee_code}",
+        f"Line: {sheet.line_name}",
+        f"Ngay: {sheet.check_date.strftime('%d/%m/%Y')}",
+        "",
+        "Ket qua checklist:",
+    ]
+    for index, result in enumerate(results, start=1):
+        value = result.result or "Chua dien"
+        note = f" - {result.abnormal_note}" if result.abnormal_note else ""
+        lines.append(f"{index}. {result.check_time.strftime('%H:%M')} {result.symbol}: {value}{note}")
+    return "\n".join(lines)
+
+
+def build_outlook_url(sheet: DailyCheckSheet | None, results: list[DailyCheckResult]) -> str:
+    if not sheet:
+        return ""
+    leaders = leader_users_for_line(sheet.line_name)
+    higher_users = higher_level_users()
+    to_addresses = ",".join([user.outlook_email for user in leaders if user.outlook_email])
+    cc_addresses = ",".join([user.outlook_email for user in higher_users if user.outlook_email])
+    subject = f"Checklist {sheet.user.full_name} - {sheet.line_name} - {sheet.check_date.strftime('%d/%m/%Y')}"
+    print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
+    body = f"{build_print_text(sheet, results)}\n\nLink ban in: {print_url}"
+    return (
+        "mailto:"
+        f"{quote(to_addresses, safe='@,.')}"
+        f"?cc={quote(cc_addresses, safe='@,.')}"
+        f"&subject={quote(subject)}"
+        f"&body={quote(body[:6500])}"
+    )
+
+
 def can_view_sheet(user: User, sheet: DailyCheckSheet) -> bool:
     if user.role in {"admin", "manager"}:
         return True
@@ -53,6 +408,18 @@ def can_view_sheet(user: User, sheet: DailyCheckSheet) -> bool:
 
 def can_edit_result(user: User, result: DailyCheckResult) -> bool:
     return user.role == "admin" or result.user_id == user.id
+
+
+def can_submit_sheet(user: User, sheet: DailyCheckSheet) -> bool:
+    return user.role == "admin" or sheet.user_id == user.id
+
+
+def can_confirm_sheet(user: User, sheet: DailyCheckSheet) -> bool:
+    if user.role == "leader":
+        return sheet.user.role == "staff" and sheet.line_name in managed_line_names(user)
+    if user.role in {"manager", "admin"}:
+        return True
+    return False
 
 
 def get_template_id() -> int:
@@ -145,6 +512,7 @@ def build_dashboard_context(
 ):
     current_user = g.current_user
     template_id = get_template_id()
+    build_reminders_for_user(current_user, selected_date)
 
     target_users = get_target_users(current_user, selected_user_id, selected_line)
     for user in target_users:
@@ -224,6 +592,10 @@ def build_dashboard_context(
             abnormal_reports = [report for report in abnormal_reports if report.user_id == current_user.id]
         confirmations = sorted(selected_sheet.confirmations, key=lambda item: item.confirmed_at)
 
+    outlook_url = ""
+    if current_user.role == "staff" and selected_sheet and selected_sheet.user_id == current_user.id:
+        outlook_url = build_outlook_url(selected_sheet, results)
+
     if current_user.role in {"admin", "manager"}:
         visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
         visible_users = User.query.filter(User.role != "admin").order_by(User.full_name.asc()).all()
@@ -241,6 +613,8 @@ def build_dashboard_context(
         "results": results,
         "abnormal_reports": abnormal_reports,
         "confirmations": confirmations,
+        "notifications": current_notifications(current_user),
+        "outlook_url": outlook_url,
         "result_summary": result_summary,
         "visible_lines": visible_lines,
         "visible_users": visible_users,
@@ -253,6 +627,8 @@ def build_dashboard_context(
         "can_edit_selected": bool(
             selected_sheet and (current_user.role == "admin" or current_user.id == selected_sheet.user_id)
         ),
+        "can_submit_selected": bool(selected_sheet and can_submit_sheet(current_user, selected_sheet)),
+        "can_confirm_selected": bool(selected_sheet and can_confirm_sheet(current_user, selected_sheet)),
     }
 
 
@@ -294,6 +670,117 @@ def dashboard():
         active_section=active_section,
     )
     return render_template("dashboard.html", **context)
+
+
+@checklist_bp.route("/notifications/<int:notification_id>/read", methods=["POST"])
+@login_required
+def mark_notification_read(notification_id: int):
+    from flask import jsonify
+    notification = Notification.query.get_or_404(notification_id)
+    if notification.user_id != g.current_user.id:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False}), 403
+        flash("Bạn không có quyền cập nhật thông báo này.", "danger")
+        return redirect(url_for("checklist.dashboard"))
+
+    notification.status = NOTIFICATION_READ
+    notification.read_at = datetime.now()
+    db.session.commit()
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True})
+    return redirect(request.referrer or url_for("checklist.dashboard"))
+
+
+@checklist_bp.route("/sheets/<int:sheet_id>/submit", methods=["POST"])
+@login_required
+def submit_sheet(sheet_id: int):
+    sheet = DailyCheckSheet.query.get_or_404(sheet_id)
+    if not can_view_sheet(g.current_user, sheet) or not can_submit_sheet(g.current_user, sheet):
+        flash("Bạn không có quyền nộp checklist này.", "danger")
+        return redirect(url_for("checklist.dashboard"))
+
+    empty_count = DailyCheckResult.query.filter(
+        DailyCheckResult.daily_sheet_id == sheet.id,
+        or_(DailyCheckResult.result.is_(None), DailyCheckResult.result == RESULT_EMPTY),
+    ).count()
+    if empty_count:
+        flash(f"Checklist còn {empty_count} hạng mục chưa điền, chưa thể nộp.", "warning")
+        return redirect_to_sheet(sheet)
+
+    sheet.status = SHEET_STATUS_SUBMITTED
+    db.session.commit()
+    flash("Đã nộp checklist thành công. Vui lòng chờ tổ trưởng xác nhận.", "success")
+    return redirect_to_sheet(sheet)
+
+
+@checklist_bp.route("/sheets/<int:sheet_id>/confirm", methods=["POST"])
+@login_required
+def confirm_sheet(sheet_id: int):
+    sheet = DailyCheckSheet.query.get_or_404(sheet_id)
+    if not can_view_sheet(g.current_user, sheet) or not can_confirm_sheet(g.current_user, sheet):
+        flash("Bạn không có quyền xác nhận checklist này.", "danger")
+        return redirect(url_for("checklist.dashboard"))
+    if not sheet_is_submitted(sheet):
+        flash("Checklist chưa được nộp nên chưa thể xác nhận.", "warning")
+        return redirect_to_sheet(sheet)
+
+    existing = DailyConfirmation.query.filter_by(
+        daily_sheet_id=sheet.id,
+        confirmed_role=g.current_user.role,
+    ).first()
+    if existing:
+        flash("Vai trò này đã xác nhận checklist rồi.", "warning")
+        return redirect_to_sheet(sheet)
+
+    confirmed_at = datetime.now()
+    db.session.add(
+        DailyConfirmation(
+            daily_sheet=sheet,
+            user=sheet.user,
+            signer=g.current_user,
+            confirmed_by_name=g.current_user.full_name,
+            confirmed_role=g.current_user.role,
+            confirmed_at=confirmed_at,
+            signature_note=request.form.get("signature_note", "").strip() or None,
+        )
+    )
+    sheet.status = SHEET_STATUS_CONFIRMED
+
+    # Gửi thông báo cho staff khi leader xác nhận checklist ngày
+    if g.current_user.role == "leader" and sheet.user.role == "staff":
+        dedupe_key = f"staff-confirmed-by-leader:{sheet.user_id}:{sheet.id}"
+        upsert_notification(
+            sheet.user,
+            "✅ Checklist của bạn đã được tổ trưởng xác nhận",
+            f"Checklist ngày {sheet.check_date.strftime('%d/%m/%Y')} của bạn đã được tổ trưởng "
+            f"{g.current_user.full_name} xác nhận lúc {confirmed_at.strftime('%H:%M %d/%m/%Y')}.",
+            "day",
+            sheet.check_date,
+            dedupe_key,
+            sheet.id,
+        )
+
+    # Gửi thông báo cho leader khi manager xác nhận checklist tuần/tháng
+    if g.current_user.role in {"manager", "admin"} and sheet.user.role == "leader":
+        for period_type in ["week", "month"]:
+            start_date, end_date = period_bounds(sheet.check_date, period_type)
+            period_name = "tuần" if period_type == "week" else "tháng"
+            dedupe_key = f"leader-confirmed-by-manager:{sheet.user_id}:{period_type}:{sheet.id}"
+            upsert_notification(
+                sheet.user,
+                f"✅ Báo cáo {period_name} của bạn đã được quản lý xác nhận",
+                f"Checklist {period_name} (từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}) "
+                f"đã được {g.current_user.full_name} xác nhận lúc {confirmed_at.strftime('%H:%M %d/%m/%Y')}.",
+                period_type,
+                sheet.check_date,
+                dedupe_key,
+                sheet.id,
+            )
+
+    db.session.commit()
+    flash("Đã xác nhận checklist thành công.", "success")
+    return redirect_to_sheet(sheet)
 
 
 @checklist_bp.route("/check-result/<int:result_id>/update", methods=["POST"])
