@@ -1,4 +1,117 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const adminShell = document.querySelector(".admin-shell");
+  const sidebarToggle = document.getElementById("admin-sidebar-toggle");
+  if (adminShell && sidebarToggle) {
+    const savedSidebarState = localStorage.getItem("admin-sidebar-collapsed");
+    if (savedSidebarState === "true") {
+      adminShell.classList.add("sidebar-collapsed");
+    }
+    sidebarToggle.addEventListener("click", () => {
+      adminShell.classList.toggle("sidebar-collapsed");
+      localStorage.setItem("admin-sidebar-collapsed", adminShell.classList.contains("sidebar-collapsed"));
+    });
+  }
+
+  document.querySelectorAll(".js-submit-on-change").forEach((control) => {
+    control.addEventListener("change", () => control.form?.submit());
+  });
+
+  document.querySelectorAll(".js-filter-submit").forEach((filterForm) => {
+    let timer = null;
+    filterForm.querySelectorAll("select, input[type='date']").forEach((control) => {
+      control.addEventListener("change", () => filterForm.requestSubmit());
+    });
+    filterForm.querySelectorAll("input[type='text']").forEach((control) => {
+      control.addEventListener("input", () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => filterForm.requestSubmit(), 350);
+      });
+    });
+  });
+
+  document.querySelectorAll(".live-filter").forEach((filterRoot) => {
+    const table = document.querySelector(filterRoot.dataset.target || "");
+    if (!table) return;
+    const selector = `.live-filter[data-target="${filterRoot.dataset.target}"]`;
+    const getControls = () => document.querySelectorAll(`${selector} [data-filter]`);
+    const applyFilters = () => {
+      const controls = Array.from(getControls());
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        const visible = controls.every((control) => {
+          const value = (control.value || "").trim().toLowerCase();
+          if (!value) return true;
+          const key = control.dataset.filter;
+          if (key === "text") return (row.dataset.search || "").toLowerCase().includes(value);
+          return (row.dataset[key] || "").toLowerCase() === value;
+        });
+        row.hidden = !visible;
+      });
+    };
+    getControls().forEach((control) => {
+      control.addEventListener(control.tagName === "SELECT" ? "change" : "input", applyFilters);
+    });
+    document.querySelectorAll(`${selector} [data-filter-clear]`).forEach((button) => {
+      button.addEventListener("click", () => {
+        getControls().forEach((control) => {
+          control.value = "";
+        });
+        applyFilters();
+      });
+    });
+  });
+
+  document.querySelectorAll(".js-result-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const formData = new FormData();
+      formData.append("result", button.dataset.result || "");
+      button.disabled = true;
+      try {
+        const response = await fetch(button.dataset.url || "", {
+          method: "POST",
+          body: formData,
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.message || "Update failed");
+        const row = button.closest("tr");
+        if (row) {
+          row.classList.remove("row-result-o", "row-result-x", "row-result-triangle", "row-result-none");
+          row.classList.add(payload.result === "o" ? "row-result-o" : "row-result-none");
+          const resultCell = row.querySelector("[data-result-cell]");
+          if (resultCell) {
+            resultCell.innerHTML = payload.result === "o"
+              ? '<span class="badge badge-result-o">o</span>'
+              : '<span class="badge badge-result-none">Chưa điền</span>';
+          }
+          const noteCell = row.querySelector("[data-note-cell]");
+          if (noteCell) noteCell.textContent = payload.note || "-";
+        }
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll(".leader-note-form input").forEach((input) => {
+    let timer = null;
+    input.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        const form = input.form;
+        if (!form) return;
+        try {
+          await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+          });
+        } catch (_) {}
+      }, 500);
+    });
+  });
+
   // ===== MODAL BẤT THƯỜNG =====
   const modal = document.getElementById("abnormalModal");
   const form = document.getElementById("abnormalForm");

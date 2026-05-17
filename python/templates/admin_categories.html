@@ -1,105 +1,172 @@
-{% extends "base.html" %}
+{% extends "admin_layout.html" %}
 
-{% block title %}Quản lý hạng mục | Daily Check{% endblock %}
+{% block title %}{{ t('manage_items') }}{% endblock %}
 
-{% block content %}
-<section class="hero-card mb-4">
-  <div>
-    <div class="eyebrow">ADMIN</div>
-    <h1 class="page-title mb-2">Quản lý hạng mục checklist</h1>
-    <p class="page-subtitle mb-0">Admin tạo, chỉnh sửa và xóa các hạng mục dùng chung cho toàn hệ thống.</p>
-  </div>
-  <div class="hero-actions">
-    <a href="{{ url_for('checklist.dashboard') }}" class="btn btn-outline-primary">Về dashboard</a>
-  </div>
-</section>
-
-<section class="card-panel mb-4">
-  <div class="section-title">Thêm hạng mục mới</div>
-  <form method="post" class="row g-3">
-    <div class="col-12 col-md-3">
-      <label class="form-label">Ký hiệu</label>
-      <input type="text" name="symbol" class="form-control" required>
+{% macro category_form(category=None) %}
+<form method="post" action="{{ url_for('category.update_category', category_id=category.id) if category else url_for('category.categories') }}" class="row g-3">
+    {% if selected_template %}<input type="hidden" name="template_id" value="{{ selected_template.id }}">{% endif %}
+    {% if selected_line %}<input type="hidden" name="line_id" value="{{ selected_line.id }}">{% endif %}
+    <div class="col-12 col-md-2">
+        <label class="form-label">Ký hiệu</label>
+        <input type="text" name="symbol" class="form-control" value="{{ category.symbol if category else '' }}" required>
     </div>
-    <div class="col-12 col-md-6">
-      <label class="form-label">Hạng mục</label>
-      <input type="text" name="category" class="form-control" required>
+    <div class="col-12 col-md-2">
+        <label class="form-label">Giờ line</label>
+        <select name="check_time" class="form-select" required>
+            {% set selected_time = category.check_time|time_local if category else '' %}
+            {% for time_value in line_time_options %}
+                <option value="{{ time_value }}" {% if selected_time == time_value %}selected{% endif %}>{{ time_value }}</option>
+            {% endfor %}
+            {% if selected_time and selected_time not in line_time_options %}
+                <option value="{{ selected_time }}" selected>{{ selected_time }}</option>
+            {% endif %}
+        </select>
     </div>
     <div class="col-12 col-md-3">
-      <label class="form-label">Giờ giới hạn</label>
-      <input type="time" name="limit_time" class="form-control" required>
+        <label class="form-label">Nhóm giờ</label>
+        <input type="text" name="time_group" class="form-control" value="{{ category.time_group if category else '' }}" placeholder="08:00 hoặc Cuối ca">
     </div>
-    <div class="col-12">
-      <button type="submit" class="btn btn-primary">Thêm hạng mục</button>
+    <div class="col-12 col-md-4">
+        <label class="form-label">Hạng mục</label>
+        <input type="text" name="content" class="form-control" value="{{ category.content_vi if category else '' }}" required>
     </div>
-  </form>
+    {% if category %}
+    <div class="col-12 col-md-1">
+        <label class="form-label">Status</label>
+        <select class="form-select" name="is_active">
+            <option value="1" {% if category.is_active %}selected{% endif %}>Active</option>
+            <option value="0" {% if not category.is_active %}selected{% endif %}>Inactive</option>
+        </select>
+    </div>
+    {% endif %}
+    <div class="col-12 d-flex justify-content-end gap-2">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Đóng</button>
+        <button class="btn btn-primary" type="submit">{{ 'Cập nhật' if category else 'Thêm hạng mục' }}</button>
+    </div>
+</form>
+{% endmacro %}
+
+{% block admin_content %}
+<section class="toolbar-panel mb-3">
+    <div>
+        <h1 class="h4 mb-1">Danh sách hạng mục</h1>
+        <div class="text-muted small">Chọn line để chỉnh giờ line và CRUD hạng mục riêng cho line đó.</div>
+    </div>
+    {% if selected_template %}
+    <button class="btn btn-success" type="button" data-bs-toggle="modal" data-bs-target="#createCategoryModal">
+        <i class="bi bi-plus-circle me-1"></i> Thêm hạng mục
+    </button>
+    {% endif %}
 </section>
 
-<section class="card-panel">
-  <div class="section-title">Danh sách hạng mục</div>
-  <div class="table-responsive">
-    <table class="table align-middle custom-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Ký hiệu</th>
-          <th>Hạng mục</th>
-          <th>Giờ giới hạn</th>
-          <th>Ngày tạo</th>
-          <th>Thao tác</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for category in categories %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td><span class="symbol-pill">{{ category.symbol }}</span></td>
-            <td>{{ category.category }}</td>
-            <td>{{ category.limit_time|time_local }}</td>
-            <td>{{ category.created_at|datetime_local }}</td>
-            <td>
-              <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editCategory{{ category.id }}">
-                  Sửa
-                </button>
-                <form method="post" action="{{ url_for('category.delete_category', category_id=category.id) }}" onsubmit="return confirm('Xóa hạng mục này?');">
-                  <button class="btn btn-sm btn-outline-danger" type="submit">Xóa</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-          <tr class="collapse-row">
-            <td colspan="6" class="p-0 border-0">
-              <div class="collapse" id="editCategory{{ category.id }}">
-                <form method="post" action="{{ url_for('category.update_category', category_id=category.id) }}" class="edit-row-form">
-                  <div class="row g-3">
-                    <div class="col-12 col-md-3">
-                      <label class="form-label">Ký hiệu</label>
-                      <input type="text" name="symbol" class="form-control" value="{{ category.symbol }}" required>
-                    </div>
-                    <div class="col-12 col-md-5">
-                      <label class="form-label">Hạng mục</label>
-                      <input type="text" name="category" class="form-control" value="{{ category.category }}" required>
-                    </div>
-                    <div class="col-12 col-md-2">
-                      <label class="form-label">Giờ</label>
-                      <input type="time" name="limit_time" class="form-control" value="{{ category.limit_time|time_local }}" required>
-                    </div>
-                    <div class="col-12 col-md-2 d-flex align-items-end">
-                      <button class="btn btn-primary w-100" type="submit">Lưu</button>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            </td>
-          </tr>
-        {% else %}
-          <tr>
-            <td colspan="6" class="empty-cell">Chưa có hạng mục nào.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<section class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-12 col-lg-3">
+                <label class="form-label">Template</label>
+                <select class="form-select js-submit-on-change" name="template_id">
+                    {% for template in templates %}
+                        <option value="{{ template.id }}" {% if selected_template and selected_template.id == template.id %}selected{% endif %}>{{ template.template_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-lg-3">
+                <label class="form-label">Line</label>
+                <select class="form-select js-submit-on-change" name="line_id">
+                    {% for line in lines %}
+                        <option value="{{ line.id }}" {% if selected_line and selected_line.id == line.id %}selected{% endif %}>{{ line.line_name }} - {{ line.department }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-lg-3 live-filter" data-target="#categoriesTable">
+                <label class="form-label">Search</label>
+                <input class="form-control" data-filter="text" placeholder="Ký hiệu, giờ, nội dung">
+            </div>
+            <div class="col-6 col-lg-2 live-filter" data-target="#categoriesTable">
+                <label class="form-label">Status</label>
+                <select class="form-select" data-filter="status">
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="locked">Inactive</option>
+                </select>
+            </div>
+            <div class="col-6 col-lg-1 live-filter" data-target="#categoriesTable">
+                <button class="btn btn-outline-secondary w-100" type="button" data-filter-clear><i class="bi bi-x-circle"></i></button>
+            </div>
+        </form>
+    </div>
 </section>
+
+<section class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive table-fill">
+            <table id="categoriesTable" class="table table-checklist table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Ký hiệu</th>
+                        <th>Giờ line</th>
+                        <th>Nhóm giờ</th>
+                        <th>Hạng mục</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in categories %}
+                    <tr
+                        data-search="{{ category.symbol }} {{ category.check_time|time_local }} {{ category.time_group }} {{ category.content_vi }}"
+                        data-status="{{ 'active' if category.is_active else 'locked' }}"
+                    >
+                        <td>{{ loop.index }}</td>
+                        <td><span class="badge text-bg-light border">{{ category.symbol }}</span></td>
+                        <td>{{ category.check_time|time_local }}</td>
+                        <td>{{ category.time_group }}</td>
+                        <td>{{ category.content_vi }}</td>
+                        <td><span class="badge {% if category.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ "Active" if category.is_active else "Inactive" }}</span></td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#editCategory{{ category.id }}" title="Edit"><i class="bi bi-pencil"></i></button>
+                                <form method="post" action="{{ url_for('category.delete_category', category_id=category.id) }}" onsubmit="return confirm('Xóa hạng mục này?');">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-4">Chưa có hạng mục.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+{% if selected_template %}
+<div class="modal fade" id="createCategoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5">Thêm hạng mục</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">{{ category_form() }}</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% for category in categories %}
+<div class="modal fade" id="editCategory{{ category.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5">Sửa hạng mục - {{ category.symbol }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">{{ category_form(category) }}</div>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}

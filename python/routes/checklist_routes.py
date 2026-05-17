@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import smtplib
 from datetime import date, datetime, timedelta
+from email.message import EmailMessage
 from urllib.parse import quote
 
-from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from models import (
     ABNORMAL_STATUS_CANCELLED,
     ABNORMAL_STATUS_OPEN,
+    AbnormalReport,
     ChecklistItem,
     DailyConfirmation,
     DailyCheckResult,
@@ -33,6 +36,9 @@ from routes.auth_routes import login_required
 
 
 checklist_bp = Blueprint("checklist", __name__)
+SMTP_SERVER = "172.24.46.52"
+SMTP_PORT = 25
+SMTP_FROM = "daily-check@app.local"
 
 
 def parse_date(raw_value: str | None, fallback: date | None = None) -> date:
@@ -71,6 +77,57 @@ def period_label(period_type: str) -> str:
 
 def submitted_statuses() -> set[str]:
     return {"submitted", "confirmed"}
+
+
+def send_outlook_email(to_address: str, subject: str, body: str, cc_addresses: list[str] | None = None) -> tuple[bool, str]:
+    if not to_address:
+        return False, "Missing Outlook address."
+
+    message = EmailMessage()
+    message["From"] = SMTP_FROM
+    message["To"] = to_address
+    if cc_addresses:
+        message["Cc"] = ", ".join([item for item in cc_addresses if item])
+    message["Subject"] = subject
+    message.set_content(body)
+
+    recipients = [to_address] + (cc_addresses or [])
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as smtp:
+            smtp.send_message(message, from_addr=SMTP_FROM, to_addrs=recipients)
+        return True, "Email sent."
+    except OSError as exc:
+        return False, str(exc)
+
+
+def build_outlook_body(sheet: DailyCheckSheet, results: list[DailyCheckResult]) -> str:
+    done_count = sum(1 for result in results if result.result == RESULT_OK)
+    ng_count = sum(1 for result in results if result.result == RESULT_NG)
+    abnormal_count = sum(1 for result in results if result.result == RESULT_ABNORMAL)
+    empty_count = sum(1 for result in results if not result.result)
+    lines = [
+        "[DAILY CHECKLIST SUBMISSION]",
+        "",
+        f"Staff: {sheet.user.full_name}",
+        f"Code: {sheet.user.employee_code}",
+        f"Line: {sheet.line_name}",
+        f"Department: {sheet.department}",
+        f"Date: {sheet.check_date.strftime('%d/%m/%Y')}",
+        f"Status: {sheet.status}",
+        "",
+        "Summary:",
+        f"- OK: {done_count}",
+        f"- NG: {ng_count}",
+        f"- Abnormal: {abnormal_count}",
+        f"- Empty: {empty_count}",
+        "",
+        "Checklist details:",
+    ]
+    for index, result in enumerate(results, start=1):
+        value = result.result or "empty"
+        note = f" | Note: {result.abnormal_note}" if result.abnormal_note else ""
+        lines.append(f"{index}. {result.check_time.strftime('%H:%M')} | {result.symbol} | {value} | {result.content}{note}")
+    return "\n".join(lines)
 
 
 def sheet_is_submitted(sheet: DailyCheckSheet) -> bool:
@@ -135,6 +192,35 @@ def upsert_notification(
     notification.related_sheet_id = related_sheet_id
 
 
+def upsert_email_reminder(
+    user: User,
+    title: str,
+    message: str,
+    period_type: str,
+    target_date: date,
+    dedupe_key: str,
+    related_sheet_id: int | None = None,
+) -> None:
+    if Notification.query.filter_by(user_id=user.id, dedupe_key=dedupe_key).first():
+        return
+
+    db.session.add(
+        Notification(
+            user=user,
+            title=title,
+            message=message,
+            category="email_reminder",
+            period_type=period_type,
+            target_date=target_date,
+            related_sheet_id=related_sheet_id,
+            dedupe_key=dedupe_key,
+            status=NOTIFICATION_UNREAD,
+        )
+    )
+    if user.outlook_email:
+        send_outlook_email(user.outlook_email, title, message)
+
+
 def resolve_notification(user: User, dedupe_key: str) -> None:
     notification = Notification.query.filter_by(
         user_id=user.id,
@@ -154,6 +240,32 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
     template_id = get_template_id()
 
     if current_user.role == "staff":
+        now = datetime.now()
+        one_hour_later = now + timedelta(hours=1)
+        today_sheet = DailyCheckSheet.query.filter_by(
+            user_id=current_user.id,
+            template_id=template_id,
+            check_date=anchor_date,
+        ).first()
+        if today_sheet and anchor_date == date.today():
+            due_results = [
+                result
+                for result in today_sheet.results
+                if (not result.result) and now.time() <= result.check_time <= one_hour_later.time()
+            ]
+            if due_results:
+                first_due = sorted(due_results, key=lambda item: item.check_time)[0]
+                dedupe_key = f"email-staff-due:{current_user.id}:{anchor_date.isoformat()}:{first_due.check_time.strftime('%H%M')}"
+                upsert_email_reminder(
+                    current_user,
+                    "Nhắc gửi checklist trong 1 tiếng tới",
+                    f"Bạn còn {len(due_results)} hạng mục checklist cần hoàn thành trước {one_hour_later.strftime('%H:%M')} ngày {anchor_date.strftime('%d/%m/%Y')}.",
+                    "day",
+                    anchor_date,
+                    dedupe_key,
+                    today_sheet.id,
+                )
+
         # Nhắc nhở nộp checklist theo ngày / tuần / tháng
         for period_type in ["day", "week", "month"]:
             start_date, end_date = period_bounds(anchor_date, period_type)
@@ -388,13 +500,23 @@ def build_outlook_url(sheet: DailyCheckSheet | None, results: list[DailyCheckRes
     cc_addresses = ",".join([user.outlook_email for user in higher_users if user.outlook_email])
     subject = f"Checklist {sheet.user.full_name} - {sheet.line_name} - {sheet.check_date.strftime('%d/%m/%Y')}"
     print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
-    body = f"{build_print_text(sheet, results)}\n\nLink ban in: {print_url}"
+    body = "\n".join(
+        [
+            "Em gửi bản in checklist:",
+            "",
+            f"Người thực hiện: {sheet.user.full_name}",
+            f"Line: {sheet.line_name}",
+            f"Ngày: {sheet.check_date.strftime('%d/%m/%Y')}",
+            "",
+            f"Mở bản in checklist: {print_url}",
+        ]
+    )
     return (
         "mailto:"
         f"{quote(to_addresses, safe='@,.')}"
         f"?cc={quote(cc_addresses, safe='@,.')}"
         f"&subject={quote(subject)}"
-        f"&body={quote(body[:6500])}"
+        f"&body={quote(body)}"
     )
 
 
@@ -422,13 +544,24 @@ def can_confirm_sheet(user: User, sheet: DailyCheckSheet) -> bool:
     return False
 
 
+def can_write_leader_note(user: User, result: DailyCheckResult) -> bool:
+    if user.role in {"admin", "manager"}:
+        return True
+    if user.role == "leader":
+        return result.daily_sheet.user.leader_id == user.id or result.daily_sheet.line_name in managed_line_names(user)
+    return False
+
+
 def get_template_id() -> int:
     sheet = DailyCheckSheet.query.first()
     return sheet.template_id if sheet else 1
 
 
-def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date: date):
+def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date: date, line_name: str | None = None):
     user = User.query.get_or_404(user_id)
+    selected_line = Line.query.filter_by(line_name=line_name, is_active=True).first() if line_name else None
+    sheet_line_name = selected_line.line_name if selected_line else user.line_name
+    sheet_department = selected_line.department if selected_line else user.department
     sheet = DailyCheckSheet.query.filter_by(
         user_id=user_id,
         template_id=template_id,
@@ -442,8 +575,8 @@ def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date
             check_date=selected_date,
             month=selected_date.month,
             year=selected_date.year,
-            line_name=user.line_name,
-            department=user.department,
+            line_name=sheet_line_name,
+            department=sheet_department,
             shift="day",
             status="draft",
         )
@@ -457,8 +590,27 @@ def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date
                 template_id=template_id,
                 check_date=selected_date,
             ).first()
+    elif selected_line and sheet.line_name != selected_line.line_name:
+        if sheet.status not in {SHEET_STATUS_SUBMITTED, SHEET_STATUS_CONFIRMED}:
+            AbnormalReport.query.filter_by(daily_sheet_id=sheet.id).delete()
+            DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).delete()
+        sheet.line_name = selected_line.line_name
+        sheet.department = selected_line.department
 
-    active_items = sheet.template.checklist_items
+    sheet_line = Line.query.filter_by(line_name=sheet.line_name).first()
+    active_items_query = ChecklistItem.query.filter(
+        ChecklistItem.template_id == template_id,
+        ChecklistItem.is_active.is_(True),
+    )
+    if sheet_line:
+        active_items_query = active_items_query.filter(ChecklistItem.line_id == sheet_line.id)
+    active_items = active_items_query.order_by(ChecklistItem.check_time.asc(), ChecklistItem.item_order.asc()).all()
+    if not active_items:
+        active_items = [
+            item
+            for item in sheet.template.checklist_items
+            if item.is_active and item.line_id is None
+        ]
     existing_item_ids = {
         item_id
         for (item_id,) in db.session.query(DailyCheckResult.checklist_item_id)
@@ -508,6 +660,7 @@ def build_dashboard_context(
     selected_sheet_id: int | None,
     keyword: str,
     result_filter: str,
+    period_type: str = "day",
     active_section: str = "checklist",
 ):
     current_user = g.current_user
@@ -516,7 +669,12 @@ def build_dashboard_context(
 
     target_users = get_target_users(current_user, selected_user_id, selected_line)
     for user in target_users:
-        ensure_daily_sheet_and_results(user.id, template_id, selected_date)
+        ensure_daily_sheet_and_results(
+            user.id,
+            template_id,
+            selected_date,
+            selected_line if current_user.role == "staff" else None,
+        )
 
     query = DailyCheckSheet.query.join(User).filter(DailyCheckSheet.check_date == selected_date)
     if current_user.role == "staff":
@@ -542,6 +700,7 @@ def build_dashboard_context(
     abnormal_reports = []
     confirmations = []
     result_summary = {"o": 0, "x": 0, "△": 0, "empty": 0}
+    period_summary = {"total": 0, "submitted": 0, "confirmed": 0, "pending": 0, "completion": 0}
     results = []
 
     if selected_sheet:
@@ -592,6 +751,22 @@ def build_dashboard_context(
             abnormal_reports = [report for report in abnormal_reports if report.user_id == current_user.id]
         confirmations = sorted(selected_sheet.confirmations, key=lambda item: item.confirmed_at)
 
+    if current_user.role == "staff":
+        start_date, end_date = period_bounds(selected_date, period_type)
+        period_sheets = DailyCheckSheet.query.filter(
+            DailyCheckSheet.user_id == current_user.id,
+            DailyCheckSheet.check_date >= start_date,
+            DailyCheckSheet.check_date <= end_date,
+        ).all()
+        period_summary["total"] = len(period_sheets)
+        period_summary["submitted"] = sum(1 for sheet in period_sheets if sheet.status == SHEET_STATUS_SUBMITTED)
+        period_summary["confirmed"] = sum(1 for sheet in period_sheets if sheet.status == SHEET_STATUS_CONFIRMED)
+        period_summary["pending"] = sum(1 for sheet in period_sheets if sheet.status not in submitted_statuses())
+        if period_summary["total"]:
+            period_summary["completion"] = round(
+                ((period_summary["submitted"] + period_summary["confirmed"]) / period_summary["total"]) * 100
+            )
+
     outlook_url = ""
     if current_user.role == "staff" and selected_sheet and selected_sheet.user_id == current_user.id:
         outlook_url = build_outlook_url(selected_sheet, results)
@@ -604,8 +779,26 @@ def build_dashboard_context(
         visible_lines = Line.query.filter(Line.line_name.in_(line_names)).order_by(Line.line_name.asc()).all()
         visible_users = User.query.filter(User.line_name.in_(line_names)).order_by(User.full_name.asc()).all()
     else:
-        visible_lines = []
+        visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
         visible_users = []
+
+    staff_assignments = []
+    leaders_for_assignment = []
+    if current_user.role in {"manager", "admin"}:
+        leaders_for_assignment = User.query.filter(
+            User.role == "leader",
+            User.is_active.is_(True),
+        ).order_by(User.full_name.asc()).all()
+        staff_assignments = User.query.filter(
+            User.role == "staff",
+            User.is_active.is_(True),
+        ).order_by(User.full_name.asc()).all()
+
+    can_change_line = True
+    if current_user.role == "staff" and selected_sheet:
+        has_data = any(r.result and r.result != RESULT_EMPTY for r in selected_sheet.results)
+        if has_data:
+            can_change_line = False
 
     return {
         "sheets": sheets,
@@ -616,8 +809,13 @@ def build_dashboard_context(
         "notifications": current_notifications(current_user),
         "outlook_url": outlook_url,
         "result_summary": result_summary,
+        "period_summary": period_summary,
+        "period_type": period_type,
         "visible_lines": visible_lines,
         "visible_users": visible_users,
+        "staff_assignments": staff_assignments,
+        "can_change_line": can_change_line,
+        "leaders_for_assignment": leaders_for_assignment,
         "selected_date": selected_date.isoformat(),
         "selected_line": selected_line,
         "selected_user_id": selected_user_id,
@@ -629,6 +827,7 @@ def build_dashboard_context(
         ),
         "can_submit_selected": bool(selected_sheet and can_submit_sheet(current_user, selected_sheet)),
         "can_confirm_selected": bool(selected_sheet and can_confirm_sheet(current_user, selected_sheet)),
+        "current_endpoint": "checklist.dashboard",
     }
 
 
@@ -659,6 +858,9 @@ def dashboard():
     selected_sheet_id = request.args.get("sheet_id", type=int)
     keyword = request.args.get("keyword", "").strip()
     result_filter = request.args.get("result_filter", "all").strip() or "all"
+    period_type = request.args.get("period", "day").strip() or "day"
+    if period_type not in {"day", "week", "month"}:
+        period_type = "day"
     active_section = request.args.get("section", "checklist")
     context = build_dashboard_context(
         selected_date,
@@ -667,6 +869,7 @@ def dashboard():
         selected_sheet_id,
         keyword,
         result_filter,
+        period_type=period_type,
         active_section=active_section,
     )
     return render_template("dashboard.html", **context)
@@ -710,7 +913,80 @@ def submit_sheet(sheet_id: int):
 
     sheet.status = SHEET_STATUS_SUBMITTED
     db.session.commit()
+    leader = sheet.user.leader or (leader_users_for_line(sheet.line_name)[0] if leader_users_for_line(sheet.line_name) else None)
+    if leader and leader.outlook_email:
+        results = DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).order_by(DailyCheckResult.check_time.asc()).all()
+        print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
+        send_outlook_email(
+            leader.outlook_email,
+            f"Staff submitted checklist: {sheet.user.full_name} - {sheet.check_date.strftime('%d/%m/%Y')}",
+            f"{build_outlook_body(sheet, results)}\n\nConfirm URL: {print_url}",
+        )
     flash("Đã nộp checklist thành công. Vui lòng chờ tổ trưởng xác nhận.", "success")
+    return redirect_to_sheet(sheet)
+
+
+@checklist_bp.route("/sheets/<int:sheet_id>/quick-check", methods=["POST"])
+@login_required
+def quick_check_sheet(sheet_id: int):
+    sheet = DailyCheckSheet.query.get_or_404(sheet_id)
+    if not can_view_sheet(g.current_user, sheet) or not can_submit_sheet(g.current_user, sheet):
+        flash("Bạn không có quyền tích nhanh checklist này.", "danger")
+        return redirect(url_for("checklist.dashboard"))
+
+    mode = request.form.get("mode", "empty_to_ok")
+    updated_count = 0
+    for result in sheet.results:
+        if mode == "all_ok" or not result.result:
+            result.result = RESULT_OK
+            result.checked_at = datetime.now()
+            result.abnormal_note = None
+            updated_count += 1
+    db.session.commit()
+    flash(f"Đã tích nhanh {updated_count} hạng mục OK.", "success")
+    return redirect_to_sheet(sheet)
+
+
+@checklist_bp.route("/sheets/<int:sheet_id>/send-outlook", methods=["POST"])
+@login_required
+def send_sheet_outlook(sheet_id: int):
+    sheet = DailyCheckSheet.query.get_or_404(sheet_id)
+    if not can_view_sheet(g.current_user, sheet) or sheet.user_id != g.current_user.id:
+        flash("Bạn không có quyền gửi Outlook checklist này.", "danger")
+        return redirect(url_for("checklist.dashboard"))
+
+    supervisor_outlook = request.form.get("supervisor_outlook", "").strip()
+    supervisor = None
+    if supervisor_outlook:
+        supervisor = User.query.filter(
+            User.outlook_email == supervisor_outlook,
+            User.role.in_(["leader", "manager", "admin"]),
+            User.is_active.is_(True),
+        ).first()
+    if supervisor is None:
+        supervisor = sheet.user.leader or (leader_users_for_line(sheet.line_name)[0] if leader_users_for_line(sheet.line_name) else None)
+    if supervisor is None:
+        flash("Không tìm thấy leader/ cấp trên có Outlook để gửi.", "danger")
+        return redirect_to_sheet(sheet)
+    supervisor_outlook = supervisor.outlook_email
+    if not supervisor_outlook:
+        flash("Tài khoản cấp trên chưa có Outlook.", "danger")
+        return redirect_to_sheet(sheet)
+
+    results = (
+        DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id)
+        .order_by(DailyCheckResult.check_time.asc(), DailyCheckResult.id.asc())
+        .all()
+    )
+    subject = f"Checklist {sheet.user.full_name} - {sheet.line_name} - {sheet.check_date.strftime('%d/%m/%Y')}"
+    print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
+    body = f"{build_outlook_body(sheet, results)}\n\nPrint URL: {print_url}"
+    cc_addresses = [user.outlook_email for user in higher_level_users() if user.outlook_email and user.id != supervisor.id]
+    ok, message = send_outlook_email(supervisor_outlook, subject, body, cc_addresses)
+    if ok:
+        flash("Đã gửi Outlook đến cấp trên.", "success")
+    else:
+        flash(f"Không gửi được qua SMTP: {message}", "danger")
     return redirect_to_sheet(sheet)
 
 
@@ -760,6 +1036,12 @@ def confirm_sheet(sheet_id: int):
             dedupe_key,
             sheet.id,
         )
+        if sheet.user.outlook_email:
+            send_outlook_email(
+                sheet.user.outlook_email,
+                f"Checklist confirmed: {sheet.check_date.strftime('%d/%m/%Y')}",
+                f"Checklist ngày {sheet.check_date.strftime('%d/%m/%Y')} của bạn đã được {g.current_user.full_name} xác nhận.",
+            )
 
     # Gửi thông báo cho leader khi manager xác nhận checklist tuần/tháng
     if g.current_user.role in {"manager", "admin"} and sheet.user.role == "leader":
@@ -788,17 +1070,17 @@ def confirm_sheet(sheet_id: int):
 def update_result(result_id: int):
     result = DailyCheckResult.query.get_or_404(result_id)
     if not can_view_sheet(g.current_user, result.daily_sheet):
-        flash("Ban khong co quyen truy cap checklist nay.", "danger")
+        flash("Bạn không có quyền truy cập checklist này.", "danger")
         return redirect(url_for("checklist.dashboard"))
     if not can_edit_result(g.current_user, result):
-        flash("Ban khong duoc sua checklist cua user khac.", "danger")
+        flash("Bạn không được sửa checklist của người dùng khác.", "danger")
         return redirect_to_sheet(result.daily_sheet)
 
     selected_result = request.form.get("result", "").strip()
     if selected_result == "empty":
         selected_result = RESULT_EMPTY
     if selected_result not in {RESULT_OK, RESULT_EMPTY}:
-        flash("Gia tri cap nhat khong hop le.", "danger")
+        flash("Giá trị cập nhật không hợp lệ.", "danger")
         return redirect_to_sheet(result.daily_sheet)
 
     result.result = selected_result
@@ -808,7 +1090,57 @@ def update_result(result_id: int):
         result.abnormal_reports[0].status = ABNORMAL_STATUS_CANCELLED
 
     db.session.commit()
-    flash("Da cap nhat ket qua checklist.", "success")
+    flash("Đã cập nhật kết quả checklist.", "success")
+    return redirect_to_sheet(result.daily_sheet)
+
+
+@checklist_bp.route("/check-result/<int:result_id>/ajax-update", methods=["POST"])
+@login_required
+def ajax_update_result(result_id: int):
+    result = DailyCheckResult.query.get_or_404(result_id)
+    if not can_view_sheet(g.current_user, result.daily_sheet) or not can_edit_result(g.current_user, result):
+        return jsonify({"ok": False, "message": "Permission denied."}), 403
+
+    selected_result = request.form.get("result", "").strip()
+    if selected_result == "empty":
+        selected_result = RESULT_EMPTY
+
+    # Cho phép tất cả giá trị hợp lệ từ profile excel view
+    if selected_result not in {RESULT_OK, RESULT_NG, RESULT_ABNORMAL, RESULT_EMPTY}:
+        return jsonify({"ok": False, "message": "Invalid result."}), 400
+
+    result.result = selected_result
+    result.checked_at = datetime.now() if selected_result else None
+
+    # Nếu xóa kết quả → hủy abnormal report
+    if selected_result == RESULT_EMPTY and result.abnormal_reports:
+        result.abnormal_reports[0].status = ABNORMAL_STATUS_CANCELLED
+    # Nếu đổi từ x/△ sang o → hủy abnormal report
+    elif selected_result == RESULT_OK and result.abnormal_reports:
+        result.abnormal_reports[0].status = ABNORMAL_STATUS_CANCELLED
+        result.abnormal_note = None
+
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "result": result.result or "empty",
+        "note": result.abnormal_note or "",
+    })
+
+
+@checklist_bp.route("/check-result/<int:result_id>/leader-note", methods=["POST"])
+@login_required
+def update_leader_note(result_id: int):
+    result = DailyCheckResult.query.get_or_404(result_id)
+    if not can_view_sheet(g.current_user, result.daily_sheet) or not can_write_leader_note(g.current_user, result):
+        return jsonify({"ok": False, "message": "Permission denied."}), 403
+
+    result.leader_note = request.form.get("leader_note", "").strip() or None
+    db.session.commit()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "leader_note": result.leader_note or ""})
+    flash("Đã cập nhật ghi chú của tổ trưởng.", "success")
     return redirect_to_sheet(result.daily_sheet)
 
 
@@ -817,10 +1149,10 @@ def update_result(result_id: int):
 def update_abnormal_result(result_id: int):
     result = DailyCheckResult.query.get_or_404(result_id)
     if not can_view_sheet(g.current_user, result.daily_sheet):
-        flash("Ban khong co quyen truy cap checklist nay.", "danger")
+        flash("Bạn không có quyền truy cập checklist này.", "danger")
         return redirect(url_for("checklist.dashboard"))
     if not can_edit_result(g.current_user, result):
-        flash("Ban khong duoc sua checklist cua user khac.", "danger")
+        flash("Bạn không được sửa checklist của người dùng khác.", "danger")
         return redirect_to_sheet(result.daily_sheet, "abnormal")
 
     selected_result = request.form.get("result", "").strip()
@@ -874,7 +1206,7 @@ def update_abnormal_result(result_id: int):
         report.status = status
 
     db.session.commit()
-    flash("Da cap nhat noi dung bat thuong.", "success")
+    flash("Đã cập nhật nội dung bất thường.", "success")
     return redirect_to_sheet(result.daily_sheet, "abnormal")
 
 
@@ -904,7 +1236,7 @@ def abnormal_reports():
 def print_checklist(sheet_id: int):
     sheet = DailyCheckSheet.query.get_or_404(sheet_id)
     if not can_view_sheet(g.current_user, sheet):
-        flash("Ban khong co quyen in checklist nay.", "danger")
+        flash("Bạn không có quyền in checklist này.", "danger")
         return redirect(url_for("checklist.dashboard"))
 
     current_lang = session.get("lang", "vi")

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Báo cáo – {{ user.full_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body { background: #fff; font-size: 12px; }
+
+    .print-header { margin-bottom: 16px; }
+    .print-header h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 4px; }
+    .print-meta { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 24px; font-size: 12px; }
+
+    .no-print { display: none !important; }
+
+    /* Bảng báo cáo */
+    .rpt-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .rpt-table th, .rpt-table td {
+      border: 1px solid #aaa;
+      padding: 4px 6px;
+      vertical-align: middle;
+    }
+    .rpt-table thead th { background: #dbeafe; font-weight: 700; text-align: center; }
+    .rpt-table .col-sticky { white-space: nowrap; }
+
+    .chip-o  { color: #166534; font-weight: 700; }
+    .chip-x  { color: #991b1b; font-weight: 700; }
+    .chip-tri{ color: #92400e; font-weight: 700; }
+
+    .rate-good { color: #166534; font-weight: 700; }
+    .rate-warn { color: #92400e; font-weight: 700; }
+    .rate-bad  { color: #991b1b; font-weight: 700; }
+
+    .row-no-data td { color: #9ca3af; }
+
+    @media print {
+      body { margin: 0; padding: 0; }
+      .no-print { display: none !important; }
+      .rpt-table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="container-fluid" style="padding: 20px 28px;">
+
+  {# Nút in – ẩn khi in thật #}
+  <div class="d-flex justify-content-between align-items-start mb-3 no-print">
+    <div>
+      <h1 style="font-size:1.3rem;font-weight:700;">Báo cáo tổng hợp checklist</h1>
+      <div class="text-muted small">{{ user.full_name }} | {{ user.line_name }} | Từ {{ date_from }} đến {{ date_to }}</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="window.print()">🖨 In</button>
+  </div>
+
+  {# Header in #}
+  <div class="print-header">
+    <h1>Báo cáo tổng hợp checklist</h1>
+    <div class="print-meta">
+      <span><strong>Họ và tên:</strong> {{ user.full_name }}</span>
+      <span><strong>Mã NV:</strong> {{ user.employee_code }}</span>
+      <span><strong>Line:</strong> {{ user.line_name }}</span>
+      <span><strong>Bộ phận:</strong> {{ user.department }}</span>
+      <span><strong>Kỳ báo cáo:</strong> {{ date_from }} → {{ date_to }}</span>
+    </div>
+  </div>
+
+  <hr style="margin: 10px 0 14px;">
+
+  {% if view == 'daily' %}
+  {# ── BẢNG THEO NGÀY ── #}
+  <h2 style="font-size:1rem;font-weight:700;margin-bottom:8px;">Chi tiết theo ngày</h2>
+  <table class="rpt-table">
+    <thead>
+      <tr>
+        <th class="col-sticky">Ngày</th>
+        <th>Trạng thái</th>
+        {% for cat in all_category_types %}
+        <th>{{ cat }}</th>
+        {% endfor %}
+        <th>NG phát sinh</th>
+        <th>Đã xử lý</th>
+        <th>Tỷ lệ đạt</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report_rows %}
+      <tr class="{% if not row.sheet %}row-no-data{% endif %}">
+        <td class="col-sticky fw-semibold">{{ row.date.strftime('%d/%m/%Y') }}</td>
+        <td>
+          {% if row.sheet %}{{ row.sheet.status }}
+          {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+        </td>
+        {% for cat in all_category_types %}
+        <td style="text-align:center;">
+          {% if row.sheet %}
+            {% set val = row.by_category[cat] if cat in row.by_category else '—' %}
+            {% if val == 'o' %}<span class="chip-o">O</span>
+            {% elif val == 'x' %}<span class="chip-x">X</span>
+            {% elif val == '△' %}<span class="chip-tri">△</span>
+            {% else %}—{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        {% endfor %}
+        <td style="text-align:center;">
+          {% if row.sheet and row.ng_count %}<span style="color:#991b1b;font-weight:700;">{{ row.ng_count }}</span>{% else %}—{% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if row.sheet and row.fixed_count %}<span style="color:#166534;font-weight:700;">{{ row.fixed_count }}</span>{% else %}—{% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if row.rate is not none %}
+            <span class="{% if row.rate >= 95 %}rate-good{% elif row.rate >= 80 %}rate-warn{% else %}rate-bad{% endif %}">{{ row.rate }}%</span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ all_category_types|length + 5 }}" style="text-align:center;color:#9ca3af;padding:12px;">Không có dữ liệu.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% else %}
+  {# ── BẢNG THEO TUẦN (mặc định) ── #}
+  <h2 style="font-size:1rem;font-weight:700;margin-bottom:8px;">Tổng hợp theo tuần</h2>
+  <table class="rpt-table">
+    <thead>
+      <tr>
+        <th class="col-sticky">Tháng</th>
+        <th class="col-sticky">Tuần</th>
+        {% for cat in all_category_types %}
+        <th>{{ cat }}</th>
+        {% endfor %}
+        <th>NG phát sinh</th>
+        <th>Đã xử lý</th>
+        <th>Audit</th>
+        <th>Tỷ lệ đạt</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if weekly_rows %}
+        {% for wk in weekly_rows %}
+        <tr>
+          <td class="col-sticky fw-semibold">{{ wk.month_label }}</td>
+          <td class="col-sticky">{{ wk.week_label }}</td>
+          {% for cat in all_category_types %}
+          <td style="text-align:center;">
+            {% set val = wk.by_category[cat] if cat in wk.by_category else '—' %}
+            {% if val == 'o' %}<span class="chip-o">O</span>
+            {% elif val == 'x' %}<span class="chip-x">X</span>
+            {% elif val == '△' %}<span class="chip-tri">△</span>
+            {% else %}—{% endif %}
+          </td>
+          {% endfor %}
+          <td style="text-align:center;">
+            {% if wk.ng_count %}<span style="color:#991b1b;font-weight:700;">{{ wk.ng_count }}</span>{% else %}—{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if wk.fixed_count %}<span style="color:#166534;font-weight:700;">{{ wk.fixed_count }}</span>{% else %}—{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if wk.by_category | length > 0 %}<span class="chip-o">O</span>{% else %}—{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if wk.rate is not none %}
+              <span class="{% if wk.rate >= 95 %}rate-good{% elif wk.rate >= 80 %}rate-warn{% else %}rate-bad{% endif %}">{{ wk.rate }}%</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="{{ all_category_types|length + 6 }}" style="text-align:center;color:#9ca3af;padding:12px;">Không có dữ liệu.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div style="margin-top:32px;font-size:11px;color:#6b7280;text-align:right;">
+    In lúc: {{ now().strftime('%H:%M %d/%m/%Y') if now is defined else '' }} | FQI-TC0201
+  </div>
+
+</div>
+<script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

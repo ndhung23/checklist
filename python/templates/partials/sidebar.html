@@ -1,10 +1,14 @@
 <aside class="admin-sidebar">
-    <div class="sidebar-title">Admin Panel</div>
-    <a class="sidebar-link {% if current_endpoint == 'checklist.dashboard' %}active{% endif %}" href="{{ url_for('checklist.dashboard') }}">{{ t('dashboard') }}</a>
-    <a class="sidebar-link {% if current_endpoint == 'admin.users' %}active{% endif %}" href="{{ url_for('admin.users') }}">{{ t('manage_accounts') }}</a>
-    <span class="sidebar-link disabled">{{ t('manage_items') }}</span>
-    <span class="sidebar-link disabled">{{ t('manage_lines') }}</span>
-    <span class="sidebar-link disabled">{{ t('abnormal_reports') }}</span>
-    <span class="sidebar-link disabled">{{ t('confirm_checklist') }}</span>
-    <a class="sidebar-link" href="{{ url_for('auth.logout') }}">{{ t('logout') }}</a>
+    <button class="sidebar-toggle" type="button" id="admin-sidebar-toggle" title="Ẩn / hiện menu">
+        <i class="bi bi-list"></i>
+    </button>
+    <div class="sidebar-title"><span class="sidebar-text">Admin Panel</span></div>
+    <a class="sidebar-link {% if current_endpoint == 'checklist.dashboard' %}active{% endif %}" href="{{ url_for('checklist.dashboard') }}" title="{{ t('dashboard') }}"><i class="bi bi-speedometer2"></i><span class="sidebar-text">{{ t('dashboard') }}</span></a>
+    <a class="sidebar-link {% if current_endpoint == 'admin.leader_assignments' %}active{% endif %}" href="{{ url_for('admin.leader_assignments') }}" title="Gan staff vao leader"><i class="bi bi-person-lines-fill"></i><span class="sidebar-text">Gan leader</span></a>
+    <a class="sidebar-link {% if current_endpoint == 'admin.users' %}active{% endif %}" href="{{ url_for('admin.users') }}" title="{{ t('manage_accounts') }}"><i class="bi bi-people"></i><span class="sidebar-text">{{ t('manage_accounts') }}</span></a>
+    <a class="sidebar-link {% if current_endpoint == 'category.categories' %}active{% endif %}" href="{{ url_for('category.categories') }}" title="{{ t('manage_items') }}"><i class="bi bi-card-checklist"></i><span class="sidebar-text">{{ t('manage_items') }}</span></a>
+    <span class="sidebar-link disabled" title="{{ t('manage_lines') }}"><i class="bi bi-diagram-3"></i><span class="sidebar-text">{{ t('manage_lines') }}</span></span>
+    <span class="sidebar-link disabled" title="{{ t('abnormal_reports') }}"><i class="bi bi-exclamation-triangle"></i><span class="sidebar-text">{{ t('abnormal_reports') }}</span></span>
+    <span class="sidebar-link disabled" title="{{ t('confirm_checklist') }}"><i class="bi bi-check2-square"></i><span class="sidebar-text">{{ t('confirm_checklist') }}</span></span>
+    <a class="sidebar-link" href="{{ url_for('auth.logout') }}" title="{{ t('logout') }}"><i class="bi bi-box-arrow-right"></i><span class="sidebar-text">{{ t('logout') }}</span></a>
 </aside>

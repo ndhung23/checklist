@@ -6,7 +6,8 @@ body {
 
 .main-wrapper {
   width: 100%;
-  padding: 20px 32px;
+  padding: 16px 24px;
+  max-width: none;
 }
 
 .navbar-brand {
@@ -49,10 +50,14 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  padding: 24px;
+  padding: 18px 22px;
   background: linear-gradient(135deg, #ffffff 0%, #eef4ff 100%);
-  border-radius: 14px;
+  border-radius: 10px;
   border: 1px solid #dbe4f0;
+}
+
+.dashboard-hero .page-subtitle {
+  display: none;
 }
 
 .hero-actions {
@@ -63,7 +68,7 @@ body {
 }
 
 .page-title {
-  font-size: 2rem;
+  font-size: 1.7rem;
   font-weight: 700;
   color: #111827;
 }
@@ -74,13 +79,96 @@ body {
 }
 
 .card {
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
+.toolbar-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.table-fill {
+  max-height: calc(100vh - 285px);
+  overflow: auto;
+}
+
+.form-section-title {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-left: 4px solid #2563eb;
+  background: #f8fafc;
+  font-weight: 700;
+  color: #111827;
+}
+
+.view-grid dt,
+.view-grid dd {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.line-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.line-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.line-pill.active,
+.line-pill:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
 .filter-panel {
   background: #ffffff;
+}
+
+.filter-panel {
+  padding: 10px 14px !important;
+}
+
+.filter-panel .form-label {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.filter-panel .form-control,
+.filter-panel .form-select,
+.filter-panel .btn {
+  min-height: 34px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 14px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(130px, 1fr) minmax(180px, 1.45fr) minmax(170px, 1.2fr) minmax(130px, 1fr) minmax(88px, 0.55fr);
+  gap: 10px;
 }
 
 .notification-panel {
@@ -105,25 +193,26 @@ body {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 10px;
 }
 
 .stat-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 10px 16px;
 }
 
 .stat-label {
   color: #4b5563;
   font-weight: 600;
+  font-size: 13px;
 }
 
 .stat-card strong {
   display: block;
-  margin-top: 8px;
-  font-size: 2rem;
+  margin-top: 2px;
+  font-size: 1.35rem;
   color: #111827;
 }
 
@@ -133,7 +222,12 @@ body {
 }
 
 .table-sticky {
-  max-height: 620px;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+}
+
+.manager-assign-table {
+  max-height: 220px;
 }
 
 .table-checklist {
@@ -162,16 +256,115 @@ body {
 }
 
 .check-content {
-  min-width: 520px;
+  min-width: 420px;
 }
 
 .status-btn {
   min-width: 36px;
 }
 
+.result-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.table-checklist th.no-print,
+.table-checklist td.no-print {
+  min-width: 190px;
+}
+
+.sheet-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.sheet-action-bar form {
+  margin: 0;
+}
+
+.abnormal-dialog {
+  max-width: 620px;
+}
+
+.abnormal-dialog .modal-header,
+.abnormal-dialog .modal-footer {
+  padding: 10px 16px;
+}
+
+.abnormal-dialog .modal-body {
+  padding: 10px 14px;
+  max-height: min(64vh, 560px);
+  overflow-y: auto;
+}
+
+.abnormal-dialog .modal-title {
+  font-size: 1.1rem !important;
+}
+
+.abnormal-dialog .form-label {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.abnormal-dialog .form-control,
+.abnormal-dialog .form-select {
+  min-height: 32px;
+  padding: 4px 9px;
+  font-size: 13px;
+}
+
+.abnormal-dialog textarea.form-control {
+  min-height: 46px;
+}
+
+.abnormal-dialog #modalNote,
+.abnormal-dialog #modalCountermeasure,
+.abnormal-dialog #modalResultAfterFix {
+  min-height: 58px;
+}
+
 .status-badge {
   min-width: 90px;
   text-transform: uppercase;
+}
+
+.sheet-status-badge {
+  min-width: 72px;
+  border-radius: 6px;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.sheet-status-draft {
+  background: #64748b;
+  color: #ffffff;
+}
+
+.sheet-status-checking {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.sheet-status-submitted {
+  background: #f59e0b;
+  color: #111827;
+}
+
+.sheet-status-confirmed {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.sheet-status-rejected {
+  background: #dc2626;
+  color: #ffffff;
 }
 
 .status-open {
@@ -235,6 +428,26 @@ body {
   color: white;
 }
 
+.leader-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.leader-summary-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #f8fafc;
+}
+
+.assignment-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 42px;
+  gap: 8px;
+  align-items: center;
+}
+
 .flash-stack {
   margin-bottom: 20px;
 }
@@ -242,11 +455,43 @@ body {
 .admin-sidebar {
   position: sticky;
   top: 20px;
-  padding: 18px;
+  padding: 14px 10px;
   border-radius: 12px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.admin-shell.sidebar-collapsed .admin-sidebar-col {
+  width: 16.666667%;
+  flex: 0 0 auto;
+}
+
+.admin-shell.sidebar-collapsed .admin-content-col {
+  width: 83.333333%;
+  flex: 0 0 auto;
+}
+
+.admin-sidebar-col {
+  width: 8.333333%;
+  flex: 0 0 auto;
+}
+
+.admin-content-col {
+  width: 91.666667%;
+  flex: 0 0 auto;
+}
+
+.sidebar-toggle {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #e5e7eb;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #111827;
+  display: grid;
+  place-items: center;
+  margin-bottom: 12px;
 }
 
 .sidebar-title {
@@ -255,12 +500,46 @@ body {
 }
 
 .sidebar-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
   color: #374151;
   text-decoration: none;
   margin-bottom: 6px;
+  min-height: 42px;
+}
+
+.sidebar-link i {
+  width: 20px;
+  text-align: center;
+  flex: 0 0 20px;
+}
+
+.sidebar-text,
+.sidebar-title {
+  display: none;
+}
+
+.sidebar-link {
+  justify-content: center;
+}
+
+.admin-shell.sidebar-collapsed .sidebar-text {
+  display: inline;
+}
+
+.admin-shell.sidebar-collapsed .sidebar-title {
+  display: block;
+}
+
+.admin-shell.sidebar-collapsed .sidebar-link {
+  justify-content: flex-start;
+}
+
+.admin-shell.sidebar-collapsed .sidebar-link {
+  padding: 10px 12px;
 }
 
 .sidebar-link.active {
@@ -357,8 +636,22 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .line-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-sidebar {
     position: static;
+  }
+
+  .admin-shell.sidebar-collapsed .admin-sidebar-col,
+  .admin-shell.sidebar-collapsed .admin-content-col {
+    width: 100%;
+    flex: 0 0 100%;
   }
 }
 
@@ -373,6 +666,11 @@ body {
 
   .login-card {
     padding: 24px;
+  }
+
+  .filter-grid,
+  .assignment-form {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -639,4 +937,552 @@ body {
 /* Khi panel mở, tăng thêm padding */
 body.notif-panel-open .has-notif-bar {
   padding-top: calc(44px + 20px);
+}
+
+/* ===== TRANG HỒ SƠ CÁ NHÂN ===== */
+
+/* Layout 2 cột */
+.profile-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.profile-left {
+  position: sticky;
+  top: calc(44px + 20px);
+}
+
+/* Thông tin cá nhân */
+.profile-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  align-items: baseline;
+}
+
+.pi-label {
+  font-weight: 600;
+  color: #4b5563;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.pi-value {
+  color: #111827;
+  font-size: 14px;
+}
+
+/* Role badge */
+.role-badge {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.role-staff   { background: #dbeafe; color: #1d4ed8; }
+.role-leader  { background: #dcfce7; color: #166534; }
+.role-manager { background: #fef3c7; color: #92400e; }
+.role-admin   { background: #fee2e2; color: #991b1b; }
+
+/* Bảng báo cáo */
+.profile-report-table th,
+.profile-report-table td {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.profile-report-table .col-sticky {
+  position: sticky;
+  left: 0;
+  background: #e5eefb;
+  z-index: 1;
+}
+
+.profile-report-table tbody .col-sticky {
+  background: #f8fafc;
+}
+
+/* Chip kết quả */
+.result-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.chip-o   { background: #dcfce7; color: #166534; }
+.chip-x   { background: #fee2e2; color: #991b1b; }
+.chip-tri { background: #fef3c7; color: #92400e; }
+
+/* Tỷ lệ đạt */
+.rate-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.rate-good { background: #dcfce7; color: #166534; }
+.rate-warn { background: #fef3c7; color: #92400e; }
+.rate-bad  { background: #fee2e2; color: #991b1b; }
+
+/* Hàng không có dữ liệu */
+.row-no-data td {
+  opacity: 0.45;
+}
+
+/* Popup chọn cột */
+.col-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.col-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.col-picker-item:hover {
+  background: #f0f7ff;
+  border-color: #93c5fd;
+}
+
+.col-picker-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
+.col-picker-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-left {
+    position: static;
+  }
+}
+
+@media (max-width: 576px) {
+  .col-picker-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== EXCEL CHECKSHEET (profile) ===== */
+.excel-sheet-header {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.excel-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  font-size: 13px;
+}
+
+.excel-note-box {
+  border: 1px solid #111827;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  background: #fff;
+}
+
+.excel-table-wrap {
+  overflow: auto;
+  max-height: 70vh;
+  border: 1px solid #111827;
+}
+
+.excel-checksheet-table {
+  border-collapse: collapse;
+  font-size: 11px;
+  min-width: 1200px;
+}
+
+.excel-checksheet-table th,
+.excel-checksheet-table td {
+  border: 1px solid #111827;
+  padding: 4px 5px;
+  vertical-align: middle;
+}
+
+.excel-checksheet-table thead th {
+  background: #e5eefb;
+  text-align: center;
+  font-weight: 700;
+}
+
+.excel-col-time {
+  min-width: 150px;
+  max-width: 190px;
+  white-space: normal;
+  background: #f8fafc;
+  font-weight: 700;
+  text-align: center;
+}
+
+.excel-time-cell {
+  vertical-align: middle;
+  padding: 8px 6px;
+  white-space: normal;
+}
+
+.excel-time-line {
+  display: block;
+  padding: 2px 0;
+}
+
+.excel-col-symbol {
+  width: 34px;
+  min-width: 34px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.excel-col-content {
+  min-width: 280px;
+  max-width: 420px;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.excel-day-col {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 2px !important;
+  font-weight: 700;
+}
+
+.excel-days-header {
+  text-align: center;
+}
+
+.excel-signature-row td {
+  background: #f3f4f6;
+}
+
+.excel-checksheet-table .cell-o {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.excel-checksheet-table .cell-x {
+  background: #fee2e2;
+  color: #991b1b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.excel-checksheet-table .cell-x:hover {
+  filter: brightness(0.95);
+}
+
+.excel-checksheet-table .cell-tri {
+  background: #fef3c7;
+  color: #92400e;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.excel-checksheet-table .cell-tri:hover {
+  filter: brightness(0.95);
+}
+
+.excel-sheet-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.excel-sheet-header > div:first-child {
+  flex: 1;
+  min-width: 400px;
+}
+
+.excel-sheet-header .d-flex {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .excel-sheet-header {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== IN BÁO CÁO PROFILE ===== */
+@media print {
+  .profile-left,
+  .notif-bar,
+  .navbar,
+  .flash-stack,
+  #btn-toggle-view,
+  #btn-col-picker,
+  #btn-print-report,
+  #btn-print-excel,
+  #btn-email-excel,
+  #btn-view-week-report,
+  #btn-add-abnormal-from-sheet,
+  #report-header-actions {
+    display: none !important;
+  }
+
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-right {
+    width: 100%;
+  }
+
+  .profile-report-table th,
+  .profile-report-table td {
+    font-size: 11px;
+  }
+
+  .excel-sheet-header {
+    break-after: avoid;
+    margin-bottom: 12pt;
+  }
+
+  .excel-table-wrap {
+    max-height: none;
+    overflow: visible;
+    border: 1px solid #999;
+  }
+
+  .excel-checksheet-table {
+    width: 100%;
+    font-size: 10px;
+  }
+
+  .excel-signature-row {
+    break-inside: avoid;
+  }
+
+  .table-responsive {
+    overflow: visible;
+  }
+}
+
+/* ===== BẢNG EXCEL CHECKSHEET ===== */
+.excel-table-wrap {
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.excel-checksheet-table {
+  border-collapse: collapse;
+  font-size: 11px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.excel-checksheet-table th,
+.excel-checksheet-table td {
+  border: 1px solid #9ca3af;
+  padding: 3px 5px;
+  vertical-align: middle;
+}
+
+.excel-checksheet-table thead th {
+  background: #dbeafe;
+  font-weight: 700;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Cột thời gian — gọn, xuống dòng giống Excel */
+.excel-col-time {
+  width: 56px !important;
+  min-width: 56px !important;
+  max-width: 56px !important;
+  white-space: normal;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: #f8fafc;
+  vertical-align: middle;
+  line-height: 1.3;
+  padding: 4px 3px !important;
+}
+
+.excel-time-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #f8fafc;
+}
+
+.excel-time-line {
+  display: block;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+/* Cột ký hiệu */
+.excel-col-symbol {
+  width: 28px !important;
+  min-width: 28px !important;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Cột nội dung */
+.excel-col-content {
+  min-width: 200px;
+  max-width: 280px;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 11px;
+}
+
+/* Cột ngày */
+.excel-day-col {
+  width: 22px !important;
+  min-width: 22px !important;
+  max-width: 22px !important;
+  text-align: center;
+  padding: 2px 1px !important;
+  font-size: 10px;
+}
+
+.excel-days-header {
+  text-align: center;
+  background: #e5eefb;
+}
+
+/* Màu ô kết quả */
+.cell-o  { background: #dcfce7 !important; color: #166534; font-weight: 700; }
+.cell-x  { background: #fee2e2 !important; color: #991b1b; font-weight: 700; }
+.cell-tri{ background: #fef3c7 !important; color: #92400e; font-weight: 700; }
+
+/* Hàng chữ ký */
+.excel-signature-row td {
+  background: #f0f7ff;
+  font-size: 10px;
+}
+
+/* Header meta */
+.excel-sheet-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.excel-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  font-size: 13px;
+}
+
+.excel-note-box {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .excel-sheet-header {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Ô Excel tương tác ===== */
+.excel-cell {
+  cursor: default;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.cell-editable {
+  cursor: pointer;
+  position: relative;
+}
+
+.cell-editable:hover {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.cell-editable:active {
+  transform: scale(0.92);
+}
+
+/* Cột ngày theo trạng thái */
+.excel-checksheet-table thead th.day-confirmed {
+  background: #bbf7d0 !important;
+  color: #166534;
+}
+
+.excel-checksheet-table thead th.day-submitted {
+  background: #bfdbfe !important;
+  color: #1d4ed8;
+}
+
+/* Chú thích */
+.day-legend {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 3px;
+  border: 1px solid #d1d5db;
+}
+
+.day-confirmed-legend { background: #bbf7d0; }
+.day-submitted-legend { background: #bfdbfe; }
+.cell-editable-legend {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid #9ca3af;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+  vertical-align: middle;
+  margin-right: 3px;
 }

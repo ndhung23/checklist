@@ -1,0 +1,70 @@
+{% extends "admin_layout.html" %}
+
+{% block title %}Gan staff vao leader{% endblock %}
+
+{% block admin_content %}
+<div class="card mb-4">
+    <div class="card-header bg-white border-0 pb-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+        <div>
+            <h2 class="section-title mb-1">Gan staff vao leader</h2>
+            <div class="text-muted small">Chon leader phu trach cho tung staff.</div>
+        </div>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('checklist.dashboard') }}">
+            <i class="bi bi-arrow-left"></i> Daily Sheets
+        </a>
+    </div>
+    <div class="card-body pt-3">
+        <div class="leader-summary-grid mb-3">
+            {% for leader in leaders %}
+                <div class="leader-summary-card">
+                    <div class="fw-bold">{{ leader.full_name }}</div>
+                    <div class="text-muted small">{{ leader.employee_code }} | {{ leader.line_name }}</div>
+                    <div class="mt-2">
+                        <span class="badge text-bg-primary">{{ leader.led_users|length }} staff</span>
+                    </div>
+                </div>
+            {% else %}
+                <div class="text-muted">Chưa có leader đang hoạt động.</div>
+            {% endfor %}
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-checklist align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Staff</th>
+                        <th>Line hom nay</th>
+                        <th>Leader hien tai</th>
+                        <th>Gan leader</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for staff in staff_assignments %}
+                    <tr>
+                        <td>{{ staff.full_name }} <span class="text-muted">({{ staff.employee_code }})</span></td>
+                        <td>{{ staff.line_name }}</td>
+                        <td>{{ staff.leader.full_name if staff.leader else '-' }}</td>
+                        <td>
+                            <form class="assignment-form" method="post" action="{{ url_for('admin.assign_leader', user_id=staff.id) }}">
+                                <select class="form-select form-select-sm" name="leader_id">
+                                    {% for leader in leaders %}
+                                        <option value="{{ leader.id }}" {% if staff.leader_id == leader.id %}selected{% endif %}>{{ leader.full_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-sm btn-primary" type="submit" title="Luu">
+                                    <i class="bi bi-check2"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">Không có staff đang hoạt động.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

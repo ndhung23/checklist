@@ -69,6 +69,10 @@ class User(db.Model):
             "role IN ('admin', 'manager', 'leader', 'staff')",
             name="ck_users_role",
         ),
+        CheckConstraint(
+            "gender IS NULL OR gender IN ('male', 'female', 'other')",
+            name="ck_users_gender",
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -77,12 +81,27 @@ class User(db.Model):
     full_name = db.Column(db.String(120), nullable=False)
     employee_code = db.Column(db.String(30), unique=True, nullable=False, index=True)
     outlook_email = db.Column(db.String(255), nullable=True)
+    gender = db.Column(db.String(20), nullable=True)
     department = db.Column(db.String(120), nullable=False)
     line_name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False, default=ROLE_STAFF)
+    manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    leader_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+    manager = db.relationship(
+        "User",
+        remote_side=[id],
+        foreign_keys=[manager_id],
+        backref="managed_users",
+    )
+    leader = db.relationship(
+        "User",
+        remote_side=[id],
+        foreign_keys=[leader_id],
+        backref="led_users",
+    )
     daily_sheets = db.relationship("DailyCheckSheet", back_populates="user")
     daily_results = db.relationship("DailyCheckResult", back_populates="user")
     abnormal_reports = db.relationship("AbnormalReport", back_populates="user")
@@ -141,7 +160,7 @@ class ChecklistTemplate(db.Model):
 class ChecklistItem(db.Model):
     __tablename__ = "checklist_items"
     __table_args__ = (
-        UniqueConstraint("template_id", "item_order", name="uq_checklist_items_template_order"),
+        UniqueConstraint("template_id", "line_id", "item_order", name="uq_checklist_items_template_line_order"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -151,6 +170,7 @@ class ChecklistItem(db.Model):
         nullable=False,
         index=True,
     )
+    line_id = db.Column(db.Integer, db.ForeignKey("lines.id"), nullable=True, index=True)
     symbol = db.Column(db.String(20), nullable=False)
     check_time = db.Column(db.Time, nullable=False, index=True)
     time_group = db.Column(db.String(100), nullable=False)
@@ -165,6 +185,7 @@ class ChecklistItem(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     template = db.relationship("ChecklistTemplate", back_populates="checklist_items")
+    line = db.relationship("Line")
     daily_results = db.relationship("DailyCheckResult", back_populates="checklist_item")
 
 
@@ -253,6 +274,7 @@ class DailyCheckResult(TimestampMixin, db.Model):
     result = db.Column(db.String(5), nullable=True, default=RESULT_EMPTY)
     checked_at = db.Column(db.DateTime)
     abnormal_note = db.Column(db.Text)
+    leader_note = db.Column(db.Text)
 
     daily_sheet = db.relationship("DailyCheckSheet", back_populates="results")
     checklist_item = db.relationship("ChecklistItem", back_populates="daily_results")

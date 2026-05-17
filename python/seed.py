@@ -39,6 +39,12 @@ SPECIAL_TIME_GROUPS = {
     "Sau ăn giữa ca": time(11, 30),
     "Cuối ca": time(17, 30),
 }
+LINE_TIME_BY_NAME = {
+    "Line A": [time(6, 0), time(7, 0), time(8, 0), time(9, 0), time(11, 0), time(12, 0), time(13, 0)],
+    "Line B": [time(8, 20), time(9, 20), time(10, 0), time(11, 0), time(13, 0), time(15, 0), time(16, 0)],
+    "Line C": [time(14, 0), time(15, 0), time(16, 0), time(17, 0), time(19, 0), time(20, 0), time(21, 0)],
+    "Line D": [time(22, 0), time(23, 0), time(0, 0), time(1, 0), time(3, 0), time(4, 0), time(5, 0)],
+}
 
 
 def normalize_symbol(raw_value: str | None) -> str:
@@ -48,7 +54,6 @@ def normalize_symbol(raw_value: str | None) -> str:
 
 
 def make_user(
-    username: str,
     password: str,
     full_name: str,
     employee_code: str,
@@ -56,15 +61,23 @@ def make_user(
     line_name: str,
     role: str,
     outlook_email: str,
+    gender: str | None = None,
+    manager: User | None = None,
+    leader: User | None = None,
+    user_id: int | None = None,
 ) -> User:
     user = User(
-        username=username,
+        id=user_id,
+        username=employee_code,
         full_name=full_name,
         employee_code=employee_code,
         outlook_email=outlook_email,
+        gender=gender,
         department=department,
         line_name=line_name,
         role=role,
+        manager=manager,
+        leader=leader,
         is_active=True,
     )
     user.set_password(password)
@@ -175,6 +188,40 @@ def load_templates_from_excel(excel_path: Path) -> list[ChecklistTemplate]:
     return templates
 
 
+def create_fallback_templates() -> list[ChecklistTemplate]:
+    template = ChecklistTemplate(
+        template_code="TL_SL_VN",
+        template_name="TL/SL Daily Checklist",
+        description="Fallback checklist template",
+        version="1.0",
+        is_active=True,
+    )
+    fallback_items = [
+        ("C1", time(8, 0), "08:00", "Kiểm tra khu vực làm việc sạch sẽ trước ca."),
+        ("C2", time(9, 0), "09:00", "Kiểm tra dụng cụ và thiết bị an toàn."),
+        ("C3", time(10, 0), "10:00", "Kiểm tra tình trạng vận hành line."),
+        ("C4", time(11, 30), "Sau ăn giữa ca", "Kiểm tra 5S sau giờ nghỉ giữa ca."),
+        ("C5", time(14, 0), "14:00", "Kiểm tra chất lượng bán thành phẩm."),
+        ("C6", time(17, 30), "Cuối ca", "Kiểm tra tổng vệ sinh và bàn giao cuối ca."),
+    ]
+    for index, (symbol, check_time, time_group, content) in enumerate(fallback_items, start=1):
+        template.checklist_items.append(
+            ChecklistItem(
+                symbol=symbol,
+                check_time=check_time,
+                time_group=time_group,
+                item_order=index,
+                category_type=symbol,
+                content=content,
+                content_vi=content,
+                content_en=content,
+                content_ja=content,
+                is_active=True,
+            )
+        )
+    return [template]
+
+
 def create_daily_sheet(user: User, template: ChecklistTemplate, target_date: date, status: str) -> DailyCheckSheet:
     return DailyCheckSheet(
         user=user,
@@ -227,10 +274,33 @@ def create_abnormal_report(
     )
 
 
-def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
-    if not excel_path.exists():
-        raise FileNotFoundError(f"Excel file not found: {excel_path}")
+def copy_template_items_to_lines(templates: list[ChecklistTemplate], lines: list[Line]) -> None:
+    for template in templates:
+        base_items = list(template.checklist_items)
+        template.checklist_items.clear()
+        for line in lines:
+            for item in base_items:
+                line_times = LINE_TIME_BY_NAME.get(line.line_name, [item.check_time])
+                line_time = line_times[(item.item_order - 1) % len(line_times)]
+                template.checklist_items.append(
+                    ChecklistItem(
+                        line=line,
+                        symbol=item.symbol,
+                        check_time=line_time,
+                        time_group=line_time.strftime("%H:%M"),
+                        item_order=item.item_order,
+                        category_type=item.category_type,
+                        content=item.content,
+                        content_vi=item.content_vi,
+                        content_en=item.content_en,
+                        content_ja=item.content_ja,
+                        note=item.note,
+                        is_active=item.is_active,
+                    )
+                )
 
+
+def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
     db.drop_all()
     db.create_all()
 
@@ -242,29 +312,45 @@ def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
     ]
     db.session.add_all(lines)
 
+    admin = make_user("1", "System Admin", "admin", "Administration", "Line A", ROLE_ADMIN, "admin1@example.com", "other")
+    manager = make_user("1", "Manager", "hv90124", "Management", "Line A", ROLE_MANAGER, "manager.nguyen.duy.au0@ap.denso1.com", "male")
+    leader = make_user("1", "Vu Hoang Phuong", "hv10000", "TL/SL", "Line A", ROLE_LEADER, "phuong.vu.hoang.a7p@ap.denso1.com", "female", manager=manager)
+    staff_1 = make_user("1", "Nguyen Duy Hung", "hv90122", "TL/SL", "Line A", ROLE_STAFF, "hung.nguyen.duy.a0u@ap.denso1.com", "male", manager=manager, leader=leader, user_id=4)
+    staff_2 = make_user("1", "Vu Quang Anh", "hv90121", "TL/SL", "Line B", ROLE_STAFF, "anh.vu.quang.a6i@ap.denso1.com", "male", manager=manager, leader=leader)
+    manager_test = make_user("1", "Test Manager", "manager_test", "Management", "Line A", ROLE_MANAGER, "manager_test@example.com", "male")
+    leader_test = make_user("1", "Test Leader", "leader_test", "TL/SL", "Line A", ROLE_LEADER, "leader_test@example.com", "female", manager=manager_test)
+    staff_test = make_user("1", "Test Staff", "staff_test", "TL/SL", "Line C", ROLE_STAFF, "staff_test@example.com", "male", manager=manager_test, leader=leader_test)
+
     users = {
-        "admin": make_user("admin", "123456", "System Admin", "EMP001", "Administration", "Line A", ROLE_ADMIN, "admin@example.com"),
-        "manager01": make_user("manager01", "123456", "Nguyen Van Manager", "EMP002", "Management", "Line A", ROLE_MANAGER, "manager01@example.com"),
-        "leader01": make_user("leader01", "123456", "Tran Thi Leader 01", "EMP003", "TL/SL", "Line A", ROLE_LEADER, "leader01@example.com"),
-        "leader02": make_user("leader02", "123456", "Tran Thi Leader 02", "EMP004", "Assembly", "Line C", ROLE_LEADER, "leader02@example.com"),
-        "staff01": make_user("staff01", "123456", "Pham Van Staff 01", "EMP005", "TL/SL", "Line A", ROLE_STAFF, "staff01@example.com"),
-        "staff02": make_user("staff02", "123456", "Le Thi Staff 02", "EMP006", "TL/SL", "Line B", ROLE_STAFF, "staff02@example.com"),
-        "staff03": make_user("staff03", "123456", "Do Van Staff 03", "EMP007", "Assembly", "Line C", ROLE_STAFF, "staff03@example.com"),
-        "staff04": make_user("staff04", "123456", "Vu Thi Staff 04", "EMP008", "Inspection", "Line D", ROLE_STAFF, "staff04@example.com"),
+        "admin": admin,
+        "manager01": manager,
+        "leader01": leader,
+        "staff01": staff_1,
+        "staff02": staff_2,
+        "manager_test": manager_test,
+        "leader_test": leader_test,
+        "staff_test": staff_test,
     }
     db.session.add_all(users.values())
     db.session.flush()
 
     line_map = {line.line_name: line for line in lines}
     assignments = [
+        ("manager01", "Line A"),
+        ("manager01", "Line B"),
         ("leader01", "Line A"),
         ("leader01", "Line B"),
-        ("leader02", "Line C"),
-        ("leader02", "Line D"),
         ("staff01", "Line A"),
         ("staff02", "Line B"),
-        ("staff03", "Line C"),
-        ("staff04", "Line D"),
+        ("manager_test", "Line A"),
+        ("manager_test", "Line B"),
+        ("manager_test", "Line C"),
+        ("manager_test", "Line D"),
+        ("leader_test", "Line A"),
+        ("leader_test", "Line B"),
+        ("leader_test", "Line C"),
+        ("leader_test", "Line D"),
+        ("staff_test", "Line C"),
     ]
     db.session.add_all(
         [
@@ -273,7 +359,8 @@ def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
         ]
     )
 
-    templates = load_templates_from_excel(excel_path)
+    templates = load_templates_from_excel(excel_path) if excel_path.exists() else create_fallback_templates()
+    copy_template_items_to_lines(templates, lines)
     db.session.add_all(templates)
     db.session.flush()
     template_vn = next(template for template in templates if template.template_code == "TL_SL_VN")
@@ -281,11 +368,8 @@ def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
     today = date.today()
     sheet_map = {
         "leader01": create_daily_sheet(users["leader01"], template_vn, today, SHEET_STATUS_SUBMITTED),
-        "leader02": create_daily_sheet(users["leader02"], template_vn, today, SHEET_STATUS_SUBMITTED),
         "staff01": create_daily_sheet(users["staff01"], template_vn, today, SHEET_STATUS_CHECKING),
         "staff02": create_daily_sheet(users["staff02"], template_vn, today, SHEET_STATUS_CONFIRMED),
-        "staff03": create_daily_sheet(users["staff03"], template_vn, today, SHEET_STATUS_CHECKING),
-        "staff04": create_daily_sheet(users["staff04"], template_vn, today, SHEET_STATUS_CHECKING),
     }
     db.session.add_all(sheet_map.values())
     db.session.flush()
@@ -293,11 +377,8 @@ def seed_database(excel_path: Path = DEFAULT_EXCEL_PATH) -> None:
     abnormal_targets: list[DailyCheckResult] = []
     patterns = {
         "leader01": {"abnormal": set(), "ng": set(), "empty": set()},
-        "leader02": {"abnormal": {11}, "ng": set(), "empty": set()},
         "staff01": {"abnormal": {9, 16}, "ng": {2, 10, 18, 27}, "empty": {31, 32, 33, 34, 35, 36}},
         "staff02": {"abnormal": {5, 22}, "ng": {7, 14}, "empty": set()},
-        "staff03": {"abnormal": {12}, "ng": {4, 15}, "empty": {34, 35}},
-        "staff04": {"abnormal": {6, 24}, "ng": {8}, "empty": {30, 31, 32}},
     }
 
     for user_key, sheet in sheet_map.items():
@@ -362,11 +443,11 @@ if __name__ == "__main__":
         seed_database()
     print("Seed completed.")
     print("Accounts:")
-    print("  admin / 123456 / admin")
-    print("  manager01 / 123456 / manager")
-    print("  leader01 / 123456 / leader")
-    print("  leader02 / 123456 / leader")
-    print("  staff01 / 123456 / staff")
-    print("  staff02 / 123456 / staff")
-    print("  staff03 / 123456 / staff")
-    print("  staff04 / 123456 / staff")
+    print("  admin / 1 / admin")
+    print("  hv90124 / 1 / manager")
+    print("  hv10000 / 1 / leader")
+    print("  hv90122 / 1 / staff")
+    print("  hv90121 / 1 / staff")
+    print("  manager_test / 1 / manager")
+    print("  leader_test / 1 / leader")
+    print("  staff_test / 1 / staff")

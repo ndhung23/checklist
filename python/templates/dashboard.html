@@ -1,108 +1,28 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}{{ t('dashboard') }}{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
+
 {% if current_user and current_user.role == 'admin' %}
-<div class="row g-4">
-    <div class="col-12 col-lg-2">
+<div class="admin-shell row g-4">
+    <div class="admin-sidebar-col col-12 col-lg-1 no-print">
         {% include "partials/sidebar.html" %}
     </div>
-    <div class="col-12 col-lg-10">
+    <div class="admin-content-col col-12 col-lg-11">
 {% endif %}
-<section class="hero-panel mb-4">
-    <div>
-        <h1 class="page-title mb-2">{{ t('dashboard') }}</h1>
-        <p class="page-subtitle mb-0">Checklist master được cố định cả năm. Khi chọn ngày mới hệ thống sẽ tự động tạo đầy đủ danh sách hạng mục với kết quả rỗng nếu chưa có dữ liệu.</p>
-    </div>
-    <div class="hero-actions no-print">
-        {% if selected_sheet %}
-            <a class="btn btn-outline-primary" href="{{ url_for('checklist.print_checklist', sheet_id=selected_sheet.id) }}" target="_blank">{{ t('print_checklist') }}</a>
-        {% endif %}
-        <a class="btn btn-outline-secondary" href="#abnormal-section">{{ t('abnormal_history') }}</a>
-        {% if current_user and current_user.role == 'admin' %}
-            <a class="btn btn-outline-dark" href="{{ url_for('admin.users') }}">{{ t('manage_accounts') }}</a>
-        {% endif %}
-    </div>
-</section>
-
-<form class="card p-3 mb-4 filter-panel no-print" method="get">
-    <div class="row g-3 align-items-end">
-        <div class="col-sm-6 col-lg-2">
-            <label class="form-label">{{ t('date') }}</label>
-            <input class="form-control" type="date" name="date" value="{{ selected_date }}">
-        </div>
-        {% if visible_lines %}
-            <div class="col-sm-6 col-lg-2">
-                <label class="form-label">Line</label>
-                <select class="form-select" name="line">
-                    <option value="">Tất cả</option>
-                    {% for line in visible_lines %}
-                        <option value="{{ line.line_name }}" {% if selected_line == line.line_name %}selected{% endif %}>{{ line.line_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        {% endif %}
-        {% if visible_users %}
-            <div class="col-sm-6 col-lg-3">
-                <label class="form-label">User</label>
-                <select class="form-select" name="user_id">
-                    <option value="">Tất cả</option>
-                    {% for user in visible_users %}
-                        <option value="{{ user.id }}" {% if selected_user_id == user.id %}selected{% endif %}>{{ user.full_name }} - {{ user.line_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        {% endif %}
-        <div class="col-sm-6 col-lg-2">
-            <label class="form-label">{{ t('search') }}</label>
-            <input class="form-control" type="text" name="keyword" value="{{ keyword }}" placeholder="Tìm kiếm hạng mục...">
-        </div>
-        <div class="col-sm-6 col-lg-2">
-            <label class="form-label">{{ t('result') }}</label>
-            <select class="form-select" name="result_filter">
-                <option value="all" {% if result_filter == 'all' %}selected{% endif %}>Tất cả</option>
-                <option value="o" {% if result_filter == 'o' %}selected{% endif %}>Đạt o</option>
-                <option value="x" {% if result_filter == 'x' %}selected{% endif %}>Lỗi x</option>
-                <option value="△" {% if result_filter == '△' %}selected{% endif %}>Bất thường △</option>
-                <option value="none" {% if result_filter == 'none' %}selected{% endif %}>Chưa điền</option>
-            </select>
-        </div>
-        <div class="col-sm-6 col-lg-1">
-            <button class="btn btn-primary w-100" type="submit">{{ t('filters') }}</button>
-        </div>
-        {% if current_user and current_user.role == 'staff' and outlook_url %}
-            <div class="col-sm-6 col-lg-2">
-                <a class="btn btn-outline-primary w-100" href="{{ outlook_url }}">Gui Outlook</a>
-            </div>
-        {% endif %}
-    </div>
-</form>
-
-<div class="stats-grid mb-4">
-    <div class="stat-card">
-        <span class="stat-label">{{ t('done') }}</span>
-        <strong>{{ result_summary["o"] }}</strong>
-    </div>
-    <div class="stat-card">
-        <span class="stat-label">{{ t('ng') }}</span>
-        <strong>{{ result_summary["x"] }}</strong>
-    </div>
-    <div class="stat-card">
-        <span class="stat-label">{{ t('abnormal') }}</span>
-        <strong>{{ result_summary["△"] }}</strong>
-    </div>
-    <div class="stat-card">
-        <span class="stat-label">{{ t('empty') }}</span>
-        <strong>{{ result_summary["empty"] }}</strong>
-    </div>
-</div>
 
 <div class="row g-4">
-    <div class="col-12 col-xxl-3">
+    {% if not current_user or current_user.role != 'staff' %}
+    <div class="col-12 col-xxl-2">
         <div class="card h-100">
-            <div class="card-header bg-white border-0 pb-0">
+            <div class="card-header bg-white border-0 pb-0 d-flex align-items-center justify-content-between gap-2">
                 <h2 class="section-title mb-0">Daily Sheets</h2>
+                {% if current_user and current_user.role in ['manager', 'admin'] %}
+                    <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('admin.leader_assignments') }}" title="Gan staff vao leader">
+                        <i class="bi bi-person-lines-fill"></i>
+                    </a>
+                {% endif %}
             </div>
             <div class="card-body pt-3">
                 <div class="table-responsive">
@@ -119,13 +39,13 @@
                             {% for sheet in sheets %}
                                 <tr class="{% if selected_sheet and selected_sheet.id == sheet.id %}table-active{% endif %}">
                                     <td>{{ loop.index }}</td>
-                                    <td>
+                                    <td data-result-cell>
                                         <a class="fw-semibold text-decoration-none" href="{{ url_for('checklist.dashboard', date=selected_date, line=selected_line, user_id=selected_user_id, keyword=keyword, result_filter=result_filter, sheet_id=sheet.id, section=active_section) }}">
                                             {{ sheet.user.full_name }}
                                         </a>
                                     </td>
                                     <td>{{ sheet.line_name }}</td>
-                                    <td><span class="badge text-bg-secondary">{{ sheet.status }}</span></td>
+                                    <td><span class="badge sheet-status-badge sheet-status-{{ sheet.status }}">{{ sheet.status }}</span></td>
                                 </tr>
                             {% else %}
                                 <tr>
@@ -138,8 +58,9 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
-    <div class="col-12 col-xxl-9">
+    <div class="col-12 {% if current_user and current_user.role == 'staff' %}col-xxl-12{% else %}col-xxl-10{% endif %}">
         <div class="card mb-4">
             <div class="card-header bg-white border-0 pb-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                 <div>
@@ -154,23 +75,125 @@
                     {% endif %}
                 </div>
                 {% if selected_sheet %}
-                    <div class="d-flex gap-2 no-print">
-                        {% if can_submit_selected and selected_sheet.status not in ['submitted', 'confirmed'] %}
-                            <form method="post" action="{{ url_for('checklist.submit_sheet', sheet_id=selected_sheet.id) }}">
-                                <button class="btn btn-sm btn-primary" type="submit">Nộp checklist</button>
-                            </form>
+                    <div class="d-flex gap-2 no-print align-items-center flex-wrap">
+                        {% if current_user and current_user.role == 'staff' and visible_lines %}
+                        <div class="d-flex gap-1 border-end pe-2">
+                            {% for line in visible_lines %}
+                                <a class="btn btn-sm btn-outline-secondary {% if selected_line == line.line_name or (not selected_line and selected_sheet and selected_sheet.line_name == line.line_name) %}active{% endif %} {% if not can_change_line and selected_sheet and selected_sheet.line_name != line.line_name %}disabled text-muted{% endif %}"
+                                   href="{% if not can_change_line and selected_sheet and selected_sheet.line_name != line.line_name %}#{% else %}{{ url_for('checklist.dashboard', date=selected_date, line=line.line_name, keyword=keyword, result_filter=result_filter, period=period_type) }}{% endif %}">
+                                    {{ line.line_name }}
+                                </a>
+                            {% endfor %}
+                        </div>
                         {% endif %}
-                        {% if can_confirm_selected %}
-                            <form method="post" action="{{ url_for('checklist.confirm_sheet', sheet_id=selected_sheet.id) }}">
-                                <button class="btn btn-sm btn-success" type="submit">Xác nhận</button>
+
+                        {% if current_user and current_user.role == 'staff' and selected_sheet.user_id == current_user.id %}
+                        <div class="d-flex gap-1 border-end pe-2">
+                            <form method="post" action="{{ url_for('checklist.send_sheet_outlook', sheet_id=selected_sheet.id) }}" class="m-0 p-0">
+                                <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-envelope"></i> Gửi leader</button>
                             </form>
+                            {% if outlook_url %}
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ outlook_url }}"><i class="bi bi-envelope-paper"></i> Mail app</a>
+                            {% endif %}
+                        </div>
                         {% endif %}
-                        <a class="btn btn-sm btn-outline-primary" href="#abnormal-section">{{ t('abnormal_history') }}</a>
-                        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('checklist.print_checklist', sheet_id=selected_sheet.id) }}" target="_blank">{{ t('print_checklist') }}</a>
+
                     </div>
                 {% endif %}
             </div>
             <div class="card-body pt-3">
+            
+
+
+                <form class="bg-light rounded p-3 mb-3 filter-panel no-print js-filter-submit" method="get">
+                    {% if current_user and current_user.role == 'staff' and selected_line %}
+                        <input type="hidden" name="line" value="{{ selected_line }}">
+                    {% endif %}
+                    <div class="filter-grid align-items-end">
+                        <div>
+                            <label class="form-label">Kỳ</label>
+                            <select class="form-select" name="period">
+                                <option value="day" {% if period_type == 'day' %}selected{% endif %}>Ngày</option>
+                                <option value="week" {% if period_type == 'week' %}selected{% endif %}>Tuần</option>
+                                <option value="month" {% if period_type == 'month' %}selected{% endif %}>Tháng</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">{{ t('date') }}</label>
+                            <input class="form-control" type="date" name="date" value="{{ selected_date }}">
+                        </div>
+                        {% if visible_lines and (not current_user or current_user.role != 'staff') %}
+                            <div>
+                                <label class="form-label">Line</label>
+                                <select class="form-select" name="line">
+                                    <option value="">Tất cả</option>
+                                    {% for line in visible_lines %}
+                                        <option value="{{ line.line_name }}" {% if selected_line == line.line_name %}selected{% endif %}>{{ line.line_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        {% endif %}
+                        {% if visible_users %}
+                            <div>
+                                <label class="form-label">User</label>
+                                <select class="form-select" name="user_id">
+                                    <option value="">Tất cả</option>
+                                    {% for user in visible_users %}
+                                        <option value="{{ user.id }}" {% if selected_user_id == user.id %}selected{% endif %}>{{ user.full_name }} - {{ user.line_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        {% endif %}
+                        <div>
+                            <label class="form-label">{{ t('search') }}</label>
+                            <input class="form-control" type="text" name="keyword" value="{{ keyword }}" placeholder="Tìm kiếm hạng mục...">
+                        </div>
+                        <div>
+                            <label class="form-label">{{ t('result') }}</label>
+                            <select class="form-select" name="result_filter">
+                                <option value="all" {% if result_filter == 'all' %}selected{% endif %}>Tất cả</option>
+                                <option value="o" {% if result_filter == 'o' %}selected{% endif %}>Đạt o</option>
+                                <option value="x" {% if result_filter == 'x' %}selected{% endif %}>Lỗi x</option>
+                                <option value="△" {% if result_filter == '△' %}selected{% endif %}>Bất thường △</option>
+                                <option value="none" {% if result_filter == 'none' %}selected{% endif %}>Chưa điền</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button class="btn btn-primary w-100" type="submit" title="Lọc"><i class="bi bi-search"></i></button>
+                        </div>
+                    </div>
+                </form>
+
+
+
+                {% if current_user and current_user.role == 'staff' and period_type in ['week', 'month'] %}
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><span class="stat-label">Tổng sheet</span><strong>{{ period_summary.total }}</strong></div>
+                    <div class="stat-card"><span class="stat-label">Đã nộp</span><strong>{{ period_summary.submitted }}</strong></div>
+                    <div class="stat-card"><span class="stat-label">Đã xác nhận</span><strong>{{ period_summary.confirmed }}</strong></div>
+                    <div class="stat-card"><span class="stat-label">Hoàn thành</span><strong>{{ period_summary.completion }}%</strong></div>
+                </div>
+                {% endif %}
+
+                <div class="stats-grid mb-4">
+                    <div class="stat-card">
+                        <span class="stat-label">{{ t('done') }}</span>
+                        <strong>{{ result_summary["o"] }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">{{ t('ng') }}</span>
+                        <strong>{{ result_summary["x"] }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">{{ t('abnormal') }}</span>
+                        <strong>{{ result_summary["△"] }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">{{ t('empty') }}</span>
+                        <strong>{{ result_summary["empty"] }}</strong>
+                    </div>
+                </div>
+
                 <div class="table-responsive table-sticky">
                     <table class="table table-checklist align-middle mb-0">
                         <thead>
@@ -181,6 +204,7 @@
                                 <th class="check-content">Content</th>
                                 <th>{{ t('result') }}</th>
                                 <th>Abnormal Note</th>
+                                <th>Leader Note</th>
                                 <th class="no-print">Action</th>
                             </tr>
                         </thead>
@@ -210,14 +234,20 @@
                                             <span class="badge badge-result-none">{{ t('empty') }}</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ result.abnormal_note or '-' }}</td>
+                                    <td data-note-cell>{{ result.abnormal_note or '-' }}</td>
+                                    <td>
+                                        {% if current_user and current_user.role in ['leader', 'manager', 'admin'] %}
+                                            <form method="post" action="{{ url_for('checklist.update_leader_note', result_id=result.id) }}" class="leader-note-form">
+                                                <input class="form-control form-control-sm" name="leader_note" value="{{ result.leader_note or '' }}" placeholder="Note">
+                                            </form>
+                                        {% else %}
+                                            {{ result.leader_note or '-' }}
+                                        {% endif %}
+                                    </td>
                                     <td class="no-print">
                                         {% if current_user and (current_user.role == 'admin' or current_user.id == result.user_id) %}
-                                            <div class="d-flex flex-wrap gap-2">
-                                                <form method="post" action="{{ url_for('checklist.update_result', result_id=result.id) }}">
-                                                    <input type="hidden" name="result" value="o">
-                                                    <button class="btn btn-sm btn-outline-success status-btn" type="submit">o</button>
-                                                </form>
+                                            <div class="result-action-group">
+                                                <button class="btn btn-sm btn-outline-success status-btn js-result-btn" type="button" data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}" data-result="o">o</button>
                                                 <button class="btn btn-sm btn-outline-danger status-btn abnormal-trigger" type="button"
                                                     data-bs-toggle="modal" data-bs-target="#abnormalModal"
                                                     data-action="{{ url_for('checklist.update_abnormal_result', result_id=result.id) }}"
@@ -240,10 +270,7 @@
                                                     data-confirm-date="{{ result.abnormal_reports[0].confirm_date_before_fix.isoformat() if result.abnormal_reports and result.abnormal_reports[0].confirm_date_before_fix else '' }}"
                                                     data-result-after-fix="{{ result.abnormal_reports[0].result_after_fix if result.abnormal_reports else '' }}"
                                                     data-status="{{ result.abnormal_reports[0].status if result.abnormal_reports else 'open' }}">△</button>
-                                                <form method="post" action="{{ url_for('checklist.update_result', result_id=result.id) }}">
-                                                    <input type="hidden" name="result" value="empty">
-                                                    <button class="btn btn-sm btn-outline-secondary" type="submit">Clear</button>
-                                                </form>
+                                                <button class="btn btn-sm btn-outline-secondary js-result-btn" type="button" data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}" data-result="empty">Clear</button>
                                             </div>
                                         {% else %}
                                             <span class="text-muted">View only</span>
@@ -252,12 +279,31 @@
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">Không có checklist result.</td>
+                                    <td colspan="8" class="text-center text-muted py-4">Không có checklist result.</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                {% if selected_sheet %}
+                    <div class="sheet-action-bar no-print">
+                        {% if can_submit_selected and selected_sheet.status not in ['submitted', 'confirmed'] %}
+                            <form method="post" action="{{ url_for('checklist.quick_check_sheet', sheet_id=selected_sheet.id) }}">
+                                <input type="hidden" name="mode" value="empty_to_ok">
+                                <button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2-all me-1"></i>Tích nhanh</button>
+                            </form>
+                            <form method="post" action="{{ url_for('checklist.submit_sheet', sheet_id=selected_sheet.id) }}">
+                                <button class="btn btn-sm btn-primary" type="submit">Nộp checklist</button>
+                            </form>
+                        {% endif %}
+                        {% if can_confirm_selected %}
+                            <form method="post" action="{{ url_for('checklist.confirm_sheet', sheet_id=selected_sheet.id) }}">
+                                <button class="btn btn-sm btn-success" type="submit">Xác nhận</button>
+                            </form>
+                        {% endif %}
+                        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('checklist.print_checklist', sheet_id=selected_sheet.id) }}" target="_blank" title="{{ t('print_checklist') }}"><i class="bi bi-printer"></i></a>
+                    </div>
+                {% endif %}
             </div>
         </div>
 
@@ -267,9 +313,6 @@
                     <h2 class="section-title mb-1">{{ t('abnormal_history') }}</h2>
                     <div class="small text-muted">Chỉ hiện x và △ trong ngày hiện tại.</div>
                 </div>
-                {% if selected_sheet %}
-                    <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('checklist.abnormal_reports', date=selected_date, line=selected_line, user_id=selected_user_id, keyword=keyword, result_filter=result_filter, sheet_id=selected_sheet.id) }}">Mở tab lỗi</a>
-                {% endif %}
             </div>
             <div class="card-body pt-3">
                 <div class="table-responsive table-sticky">
@@ -332,7 +375,7 @@
 </div>
 
 <div class="modal fade" id="abnormalModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-md modal-dialog-scrollable abnormal-dialog">
         <div class="modal-content">
             <form id="abnormalForm" method="post">
                 <div class="modal-header">
@@ -340,7 +383,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row g-3 mb-3">
+                    <div class="row g-2 mb-2">
                         <div class="col-md-4">
                             <label class="form-label">ID</label>
                             <input class="form-control" id="modalResultId" type="text" readonly>
@@ -354,26 +397,26 @@
                             <input class="form-control" id="modalDate" type="text" readonly>
                         </div>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-2">
                         <label class="form-label">Kết quả</label>
                         <select class="form-select" id="modalResult" name="result" required>
                             <option value="x">x</option>
                             <option value="△">△</option>
                         </select>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-2">
                         <label class="form-label">Hạng mục check</label>
                         <textarea class="form-control" id="modalContent" rows="2" readonly></textarea>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-2">
                         <label class="form-label">Nội dung bất thường</label>
                         <textarea class="form-control" id="modalNote" name="abnormal_content" rows="3" required></textarea>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-2">
                         <label class="form-label">Đối sách xử lý</label>
                         <textarea class="form-control" id="modalCountermeasure" name="countermeasure" rows="3"></textarea>
                     </div>
-                    <div class="row g-3">
+                    <div class="row g-2">
                         <div class="col-md-6">
                             <label class="form-label">Ngày xác nhận sau khi xử lý</label>
                             <input class="form-control" id="modalConfirmDate" name="confirm_date_before_fix" type="date">
@@ -388,7 +431,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="mt-3">
+                    <div class="mt-2">
                         <label class="form-label">Kết quả xác nhận sau khi xử lý</label>
                         <textarea class="form-control" id="modalResultAfterFix" name="result_after_fix" rows="3"></textarea>
                     </div>

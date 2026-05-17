@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row g-4">
-    <div class="col-12 col-lg-2">
+<div class="admin-shell row g-4">
+    <div class="admin-sidebar-col col-12 col-lg-1">
         {% include "partials/sidebar.html" %}
     </div>
-    <div class="col-12 col-lg-10">
+    <div class="admin-content-col col-12 col-lg-11">
         {% block admin_content %}{% endblock %}
     </div>
 </div>

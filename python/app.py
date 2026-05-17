@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+from datetime import datetime
 from flask import Flask, g, redirect, request, session
 from sqlalchemy import inspect, text
 
@@ -7,6 +8,7 @@ from config import Config
 from models import db
 from routes.admin_routes import admin_bp
 from routes.auth_routes import auth_bp
+from routes.category_routes import category_bp
 from routes.checklist_routes import checklist_bp
 
 
@@ -52,24 +54,24 @@ TRANSLATIONS = {
         "abnormal": "Abnormal",
     },
     "ja": {
-        "dashboard": "ダッシュボード",
-        "checklist": "チェックリスト",
-        "date": "日付",
-        "search": "検索",
-        "result": "結果",
-        "abnormal_history": "異常内容と処置履歴",
-        "print_checklist": "チェックリスト印刷",
-        "logout": "ログアウト",
-        "manage_accounts": "アカウント管理",
-        "manage_items": "項目管理",
-        "manage_lines": "ライン管理",
-        "abnormal_reports": "異常レポート",
-        "confirm_checklist": "チェック確認",
-        "filters": "フィルター",
-        "empty": "未入力",
-        "done": "完了",
-        "ng": "不良",
-        "abnormal": "異常",
+        "dashboard": "ăƒ€ăƒƒă‚·ăƒ¥ăƒœăƒ¼ăƒ‰",
+        "checklist": "ăƒă‚§ăƒƒă‚¯ăƒªă‚¹ăƒˆ",
+        "date": "æ—¥ä»˜",
+        "search": "æ¤œç´¢",
+        "result": "çµæœ",
+        "abnormal_history": "ç•°å¸¸å†…å®¹ă¨å‡¦ç½®å±¥æ­´",
+        "print_checklist": "ăƒă‚§ăƒƒă‚¯ăƒªă‚¹ăƒˆå°åˆ·",
+        "logout": "ăƒ­ă‚°ă‚¢ă‚¦ăƒˆ",
+        "manage_accounts": "ă‚¢ă‚«ă‚¦ăƒ³ăƒˆç®¡ç†",
+        "manage_items": "é …ç›®ç®¡ç†",
+        "manage_lines": "ăƒ©ă‚¤ăƒ³ç®¡ç†",
+        "abnormal_reports": "ç•°å¸¸ăƒ¬ăƒăƒ¼ăƒˆ",
+        "confirm_checklist": "ăƒă‚§ăƒƒă‚¯ç¢ºèª",
+        "filters": "ăƒ•ă‚£ăƒ«ă‚¿ăƒ¼",
+        "empty": "æœªå…¥å›",
+        "done": "å®Œäº†",
+        "ng": "ä¸è‰¯",
+        "abnormal": "ç•°å¸¸",
     },
 }
 
@@ -92,9 +94,37 @@ def ensure_database_schema(app: Flask) -> None:
             if "outlook_email" not in user_columns:
                 db.session.execute(text("ALTER TABLE users ADD COLUMN outlook_email VARCHAR(255)"))
                 db.session.commit()
+            if "gender" not in user_columns:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN gender VARCHAR(20)"))
+                db.session.commit()
+            if "manager_id" not in user_columns:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN manager_id INTEGER"))
+                db.session.commit()
+            if "leader_id" not in user_columns:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN leader_id INTEGER"))
+                db.session.commit()
+            db.session.execute(
+                text(
+                    "UPDATE users SET username = employee_code "
+                    "WHERE employee_code IS NOT NULL AND employee_code != '' AND username != employee_code"
+                )
+            )
+            db.session.commit()
 
         if "notifications" not in inspector.get_table_names():
             db.create_all()
+
+        if "checklist_items" in inspector.get_table_names():
+            item_columns = {column["name"] for column in inspector.get_columns("checklist_items")}
+            if "line_id" not in item_columns:
+                db.session.execute(text("ALTER TABLE checklist_items ADD COLUMN line_id INTEGER"))
+                db.session.commit()
+
+        if "daily_check_results" in inspector.get_table_names():
+            result_columns = {column["name"] for column in inspector.get_columns("daily_check_results")}
+            if "leader_note" not in result_columns:
+                db.session.execute(text("ALTER TABLE daily_check_results ADD COLUMN leader_note TEXT"))
+                db.session.commit()
 
 
 def create_app() -> Flask:
@@ -105,6 +135,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(checklist_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(category_bp)
     ensure_database_schema(app)
 
     @app.before_request
@@ -138,6 +169,7 @@ def create_app() -> Flask:
             "get_item_content": get_item_content,
             "current_endpoint": request.endpoint or "",
             "notifications": notifications,
+            "now": datetime.utcnow,
         }
 
     @app.template_filter("date_local")
