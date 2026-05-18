@@ -2,10 +2,12 @@
 
 {% block content %}
 <div class="admin-shell row g-4">
+    {% if current_user and current_user.role == 'admin' %}
     <div class="admin-sidebar-col col-12 col-lg-1">
         {% include "partials/sidebar.html" %}
     </div>
-    <div class="admin-content-col col-12 col-lg-11">
+    {% endif %}
+    <div class="{% if current_user and current_user.role == 'admin' %}admin-content-col col-12 col-lg-11{% else %}col-12{% endif %}">
         {% block admin_content %}{% endblock %}
     </div>
 </div>

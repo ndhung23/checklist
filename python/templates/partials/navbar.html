@@ -8,7 +8,7 @@
       <div class="ms-auto d-flex flex-column flex-lg-row align-items-lg-center gap-2 gap-lg-3">
         <span class="user-chip">
           {{ current_user.name }}
-          <small>{{ current_user.role }}</small>
+          <small>{{ role_label(current_user.role) }}</small>
         </span>
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('auth.logout') }}">Đăng xuất</a>
       </div>

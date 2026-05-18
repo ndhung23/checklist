@@ -75,6 +75,13 @@ TRANSLATIONS = {
     },
 }
 
+ROLE_LABELS = {
+    "staff": "Tổ phó",
+    "leader": "Tổ trưởng",
+}
+
+TEMP_SHARED_OUTLOOK = "hung.nguyen.duy.a0u@ap.denso.com"
+
 
 def get_item_content(item, lang: str) -> str:
     if lang == "ja" and item.content_ja:
@@ -104,11 +111,10 @@ def ensure_database_schema(app: Flask) -> None:
                 db.session.execute(text("ALTER TABLE users ADD COLUMN leader_id INTEGER"))
                 db.session.commit()
             db.session.execute(
-                text(
-                    "UPDATE users SET username = employee_code "
-                    "WHERE employee_code IS NOT NULL AND employee_code != '' AND username != employee_code"
-                )
+                text("UPDATE users SET outlook_email = :outlook WHERE outlook_email IS NULL OR outlook_email = ''"),
+                {"outlook": TEMP_SHARED_OUTLOOK},
             )
+            db.session.execute(text("UPDATE users SET manager_id = NULL WHERE role IN ('leader', 'staff')"))
             db.session.commit()
 
         if "notifications" not in inspector.get_table_names():
@@ -152,6 +158,9 @@ def create_app() -> Flask:
         def t(key: str) -> str:
             return TRANSLATIONS.get(current_lang, TRANSLATIONS["vi"]).get(key, key)
 
+        def role_label(role: str | None) -> str:
+            return ROLE_LABELS.get(role or "", role or "")
+
         current_user = getattr(g, "current_user", None)
         notifications = []
         if current_user:
@@ -166,6 +175,7 @@ def create_app() -> Flask:
             "current_user": current_user,
             "current_lang": current_lang,
             "t": t,
+            "role_label": role_label,
             "get_item_content": get_item_content,
             "current_endpoint": request.endpoint or "",
             "notifications": notifications,
@@ -210,4 +220,4 @@ app = create_app()
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=9999)

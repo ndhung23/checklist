@@ -15,7 +15,7 @@
       <div class="card-header bg-white border-0 pb-0 d-flex justify-content-between align-items-center">
         <h2 class="section-title mb-0">Thông tin cá nhân</h2>
         <button class="btn btn-sm btn-outline-primary" id="btn-open-change-pw" type="button">
-          🔑 Đổi mật khẩu
+          Cập nhật thông tin
         </button>
       </div>
       <div class="card-body pt-3">
@@ -29,12 +29,14 @@
           <span class="pi-label">Bộ phận</span>
           <span class="pi-value">{{ user.department }}</span>
 
-          <span class="pi-label">Line</span>
-          <span class="pi-value">{{ user.line_name }}</span>
+          {% if user.role == 'staff' %}
+            <span class="pi-label">Line</span>
+            <span class="pi-value">{{ user.line_name }}</span>
+          {% endif %}
 
           <span class="pi-label">Vai trò</span>
           <span class="pi-value">
-            <span class="badge role-badge role-{{ user.role }}">{{ user.role }}</span>
+            <span class="badge role-badge role-{{ user.role }}">{{ role_label(user.role) }}</span>
           </span>
 
           <span class="pi-label">Email Outlook</span>
@@ -129,11 +131,9 @@
       {# Nút cho chế độ Excel #}
       <div class="d-flex gap-2" id="excel-header-actions" {% if view_mode != 'excel' %}style="display:none;"{% endif %}>
         {% if excel_context and excel_context.latest_sheet_id %}
-        <a class="btn btn-sm btn-outline-dark"
-           href="{{ url_for('checklist.print_checklist', sheet_id=excel_context.latest_sheet_id) }}"
-           target="_blank">
+        <button class="btn btn-sm btn-outline-dark" id="btn-print-excel-header" type="button">
           🖨 In checksheet
-        </a>
+        </button>
         <a class="btn btn-sm btn-outline-primary" id="btn-outlook-excel"
            href="#" onclick="sendOutlookExcel(event)">
           📧 Gửi Outlook
@@ -287,7 +287,9 @@
               <div class="excel-meta-grid">
                 <div><strong>Họ và tên SL/TL:</strong> {{ user.full_name }}</div>
                 <div><strong>Mã NV:</strong> {{ user.employee_code }}</div>
-                <div><strong>Line:</strong> {{ user.line_name }}</div>
+                {% if user.role == 'staff' %}
+                <div><strong>Line:</strong> {{ excel_context.line_name or user.line_name }}</div>
+                {% endif %}
                 <div><strong>Tháng:</strong> {{ excel_context.excel_month }}/{{ excel_context.excel_year }}</div>
               </div>
               <div class="excel-note-box">
@@ -404,21 +406,38 @@
                 <th>Đối sách xử lý</th>
                 <th>Ngày xác nhận sau khi xử lý</th>
                 <th>Kết quả xác nhận sau khi xử lý</th>
+                <th class="no-print">Action</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="profileAbnormalReportsBody">
               {% for report in excel_context.excel_abnormal_reports %}
-              <tr>
+              <tr data-report-result-id="{{ report.daily_check_result_id }}">
                 <td>{{ report.symbol }}</td>
                 <td>{{ report.occurred_date|date_local }}</td>
                 <td>{{ report.abnormal_content }}</td>
                 <td>{{ report.countermeasure or '—' }}</td>
                 <td>{{ report.confirm_date_before_fix|date_local if report.confirm_date_before_fix else '—' }}</td>
                 <td>{{ report.result_after_fix or '—' }}</td>
+                <td class="no-print">
+                  <button class="btn btn-sm btn-outline-primary abnormal-trigger" type="button"
+                    data-bs-toggle="modal" data-bs-target="#abnormalModal"
+                    data-action="{{ url_for('checklist.update_abnormal_result', result_id=report.daily_check_result_id) }}"
+                    data-result="{{ report.daily_check_result.result }}"
+                    data-id="{{ report.daily_check_result_id }}"
+                    data-symbol="{{ report.symbol }}"
+                    data-date="{{ report.occurred_date.isoformat() }}"
+                    data-content="{{ get_item_content(report.daily_check_result.checklist_item, current_lang) }}"
+                    data-note="{{ report.abnormal_content }}"
+                    data-countermeasure="{{ report.countermeasure or '' }}"
+                    data-confirm-date="{{ report.confirm_date_before_fix.isoformat() if report.confirm_date_before_fix else '' }}"
+                    data-result-after-fix="{{ report.result_after_fix or '' }}"
+                    data-status="{{ report.status }}">Sửa</button>
+                </td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="6" class="text-center text-muted py-3">Không có lỗi trong tháng này.</td>
+                  <td colspan="7" class="text-center text-muted py-3">Không có lỗi trong tháng này.</td>
+
               </tr>
               {% endfor %}
             </tbody>
@@ -434,34 +453,91 @@
 </div>
 
 {# ================================================================
-   POPUP ĐỔI MẬT KHẨU
+   POPUP CẬP NHẬT THÔNG TIN
    ================================================================ #}
 <div class="modal fade" id="changePwModal" tabindex="-1" aria-labelledby="changePwModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <form method="post" action="{{ url_for('auth.profile') }}">
         <div class="modal-header">
-          <h5 class="modal-title" id="changePwModalLabel">🔑 Đổi mật khẩu</h5>
+          <h5 class="modal-title" id="changePwModalLabel">Cập nhật thông tin</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <div class="mb-3">
+            <label class="form-label fw-semibold">Họ và tên</label>
+            <input type="text" class="form-control" name="full_name" value="{{ user.full_name }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Email Outlook</label>
+            <input type="email" class="form-control" name="outlook_email" value="{{ user.outlook_email or '' }}">
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Giới tính</label>
+              <select class="form-select" name="gender">
+                <option value="">Unknown</option>
+                <option value="male" {% if user.gender == 'male' %}selected{% endif %}>male</option>
+                <option value="female" {% if user.gender == 'female' %}selected{% endif %}>female</option>
+                <option value="other" {% if user.gender == 'other' %}selected{% endif %}>other</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Bộ phận</label>
+              <input type="text" class="form-control" name="department" value="{{ user.department }}" required>
+            </div>
+          </div>
+          <hr>
+          <div class="mb-3">
             <label class="form-label fw-semibold">Mật khẩu cũ</label>
-            <input type="password" class="form-control" name="old_password" required autocomplete="current-password">
+            <input type="password" class="form-control" name="old_password" autocomplete="current-password">
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Mật khẩu mới</label>
-            <input type="password" class="form-control" name="new_password" required autocomplete="new-password" id="pw-new">
+            <input type="password" class="form-control" name="new_password" autocomplete="new-password" id="pw-new">
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Xác nhận mật khẩu mới</label>
-            <input type="password" class="form-control" name="confirm_password" required autocomplete="new-password" id="pw-confirm">
+            <input type="password" class="form-control" name="confirm_password" autocomplete="new-password" id="pw-confirm">
             <div class="invalid-feedback" id="pw-mismatch-msg">Mật khẩu xác nhận không khớp.</div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-          <button type="submit" class="btn btn-primary" id="btn-pw-submit">Đổi mật khẩu</button>
+          <button type="submit" class="btn btn-primary" id="btn-pw-submit">Cập nhật</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="abnormalModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-scrollable abnormal-dialog">
+    <div class="modal-content">
+      <form id="abnormalForm" method="post">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5">Cập nhật lỗi / bất thường</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2 mb-2">
+            <div class="col-md-4"><label class="form-label">ID</label><input class="form-control" id="modalResultId" type="text" readonly></div>
+            <div class="col-md-4"><label class="form-label">Ký hiệu</label><input class="form-control" id="modalSymbol" type="text" readonly></div>
+            <div class="col-md-4"><label class="form-label">Ngày tháng phát sinh</label><input class="form-control" id="modalDate" type="text" readonly></div>
+          </div>
+          <div class="mb-2"><label class="form-label">Kết quả</label><select class="form-select" id="modalResult" name="result" required><option value="x">x</option><option value="△">△</option></select></div>
+          <div class="mb-2"><label class="form-label">Hạng mục check</label><textarea class="form-control" id="modalContent" rows="2" readonly></textarea></div>
+          <div class="mb-2"><label class="form-label">Nội dung bất thường</label><textarea class="form-control" id="modalNote" name="abnormal_content" rows="3" required></textarea></div>
+          <div class="mb-2"><label class="form-label">Đối sách xử lý</label><textarea class="form-control" id="modalCountermeasure" name="countermeasure" rows="3"></textarea></div>
+          <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">Ngày xác nhận sau khi xử lý</label><input class="form-control" id="modalConfirmDate" name="confirm_date_before_fix" type="date"></div>
+            <div class="col-md-6"><label class="form-label">Trạng thái</label><select class="form-select" id="modalStatus" name="status"><option value="open">open</option><option value="processing">processing</option><option value="fixed">fixed</option><option value="confirmed">confirmed</option></select></div>
+          </div>
+          <div class="mt-2"><label class="form-label">Kết quả xác nhận sau khi xử lý</label><textarea class="form-control" id="modalResultAfterFix" name="result_after_fix" rows="3"></textarea></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+          <button type="submit" class="btn btn-primary">Lưu</button>
         </div>
       </form>
     </div>
@@ -520,6 +596,14 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/profile.js') }}"></script>
 <script>
+const abnormalForm = document.getElementById("abnormalForm");
+if (abnormalForm) {
+  abnormalForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await fetch(abnormalForm.action, { method: "POST", body: new FormData(abnormalForm) });
+    window.location.reload();
+  });
+}
 // ── Click ô Excel để thay đổi kết quả: o → x → △ → (trống) ────
 (function () {
   const CYCLE = ['o', 'x', '△', ''];
@@ -556,6 +640,12 @@
           if (span) span.textContent = current;
           td.dataset.current = current;
           alert('Không thể cập nhật: ' + (data.message || 'Lỗi server'));
+        } else if (window.updateAbnormalTableFromPayload) {
+          window.updateAbnormalTableFromPayload(data, {
+            tbodyId: "profileAbnormalReportsBody",
+            colspan: 7,
+            compact: true
+          });
         }
       } catch (e) {
         // Rollback nếu network error
@@ -583,9 +673,9 @@ function sendOutlookExcel(e) {
   e.preventDefault();
   {% if excel_context and excel_context.latest_sheet_id %}
   const printUrl = "{{ url_for('checklist.print_checklist', sheet_id=excel_context.latest_sheet_id, _external=True) }}";
-  const subject = encodeURIComponent("Checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }} - {{ user.full_name }} - {{ user.line_name }}");
+  const subject = encodeURIComponent("Checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }} - {{ user.full_name }}{% if user.role == 'staff' %} - {{ user.line_name }}{% endif %}");
   const body = encodeURIComponent(
-    "Kính gửi,\n\nVui lòng xem checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }}.\n\nNgười thực hiện: {{ user.full_name }}\nMã NV: {{ user.employee_code }}\nLine: {{ user.line_name }}\n\nLink xem chi tiết: " + printUrl
+    "Kính gửi,\n\nVui lòng xem checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }}.\n\nNgười thực hiện: {{ user.full_name }}\nMã NV: {{ user.employee_code }}\n{% if user.role == 'staff' %}Line: {{ user.line_name }}\n{% endif %}\nLink xem chi tiết: " + printUrl
   );
   {% if user.outlook_email %}
   const to = encodeURIComponent("{{ user.outlook_email }}");
@@ -608,6 +698,17 @@ if (btnPrintExcel) {
     window.print();
   });
 }
+const btnPrintExcelHeader = document.getElementById("btn-print-excel-header");
+if (btnPrintExcelHeader) {
+  btnPrintExcelHeader.addEventListener("click", () => {
+    const table = document.getElementById("excel-main-table");
+    if (!table) {
+      alert("KhĂ´ng tĂ¬m tháº¥y báº£ng. Vui lĂ²ng chá»n thĂ¡ng trÆ°á»›c.");
+      return;
+    }
+    window.print();
+  });
+}
 
 // ── Nút gửi Outlook ───────────────────────────────────────────
 const btnEmailExcel = document.getElementById("btn-email-excel");
@@ -619,12 +720,13 @@ if (btnEmailExcel) {
       return;
     }
     const [year, month] = excelMonth.split("-");
-    const subject = encodeURIComponent("Checksheet tháng " + month + "/" + year + " - {{ user.full_name }} - {{ user.line_name }}");
+    const subject = encodeURIComponent("Checksheet tháng " + month + "/" + year + " - {{ user.full_name }}{% if user.role == 'staff' %} - {{ user.line_name }}{% endif %}");
     const body = encodeURIComponent(
       "Kính gửi,\n\nBạn vui lòng xem checksheet tháng " + month + "/" + year + " chi tiết dưới đây.\n\nThông tin:\n" +
       "- Tên: {{ user.full_name }}\n" +
       "- Mã NV: {{ user.employee_code }}\n" +
-      "- Line: {{ user.line_name }}\n\n" +
+      {% if user.role == 'staff' %}"- Line: {{ user.line_name }}\n" +{% endif %}
+      "\n" +
       "Trân trọng."
     );
     {% if user.outlook_email %}

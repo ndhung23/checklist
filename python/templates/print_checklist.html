@@ -49,7 +49,13 @@
                     {% for result in results %}
                         <tr>
                             <td>{{ loop.index }}</td>
-                            <td>{{ result.check_time|time_local }}</td>
+                            <td>
+                                {% set actual_date = result_work_date(sheet.line_name, sheet.check_date, result.check_time) %}
+                                {{ result.check_time|time_local }}
+                                {% if sheet.line_name == 'Line D' %}
+                                    <br><small>{{ actual_date|date_local }}</small>
+                                {% endif %}
+                            </td>
                             <td>{{ result.symbol }}</td>
                             <td>{{ get_item_content(result.checklist_item, current_lang) }}</td>
                             <td>{{ result.result or t('empty') }}</td>
@@ -101,7 +107,7 @@
                 <thead>
                     <tr>
                         <th>Người thực hiện</th>
-                        <th>Leader xác nhận</th>
+                        <th>Tổ trưởng xác nhận</th>
                         <th>Manager xác nhận</th>
                         <th>Ngày ký</th>
                         <th>Ghi chú xác nhận</th>

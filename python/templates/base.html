@@ -76,9 +76,14 @@
                 <div class="d-flex align-items-center gap-3">
                     <!-- {% include "partials/language_switcher.html" %} -->
                     {% if current_user %}
+                        {% if current_user.role in ['admin', 'manager', 'leader'] %}
+                            <a class="btn btn-primary btn-sm" href="{{ url_for('admin.users', create=1) }}">
+                                <i class="bi bi-person-plus"></i> Tạo tài khoản
+                            </a>
+                        {% endif %}
                         <a href="{{ url_for('auth.profile') }}" class="user-pill text-decoration-none text-dark">
                             <strong>{{ current_user.full_name }}</strong>
-                            <span>{{ current_user.role }}{% if current_user.role != 'admin' %} | {{ current_user.line_name }}{% endif %}</span>
+                            <span>{{ role_label(current_user.role) }}{% if current_user.role == 'staff' %} | {{ current_user.line_name }}{% endif %}</span>
                         </a>
                         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('auth.logout') }}">{{ t('logout') }}</a>
                     {% endif %}

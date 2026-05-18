@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", () => {
+﻿document.addEventListener("DOMContentLoaded", () => {
   const adminShell = document.querySelector(".admin-shell");
   const sidebarToggle = document.getElementById("admin-sidebar-toggle");
   if (adminShell && sidebarToggle) {
@@ -60,6 +60,87 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  const resultClassMap = {
+    o: "row-result-o",
+    x: "row-result-x",
+    "â–³": "row-result-triangle",
+    empty: "row-result-none",
+    "": "row-result-none",
+  };
+  const resultBadgeMap = {
+    o: '<span class="badge badge-result-o">o</span>',
+    x: '<span class="badge badge-result-x">x</span>',
+    "â–³": '<span class="badge badge-result-triangle">â–³</span>',
+    empty: '<span class="badge badge-result-none">Chua dien</span>',
+    "": '<span class="badge badge-result-none">Chua dien</span>',
+  };
+
+  const ensureEmptyAbnormalRow = (tbody, colspan = 9) => {
+    if (tbody.querySelector("[data-report-result-id]")) return;
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-muted py-4">Khong co abnormal report.</td></tr>`;
+  };
+
+  window.updateAbnormalTableFromPayload = (payload, options = {}) => {
+    const tbody = document.getElementById(options.tbodyId || "abnormalReportsBody");
+    if (!tbody || !payload || !payload.result_id) return;
+    const existing = tbody.querySelector(`tr[data-report-result-id="${payload.result_id}"]`);
+    if (!payload.abnormal) {
+      if (existing) existing.remove();
+      ensureEmptyAbnormalRow(tbody, options.colspan || 9);
+      return;
+    }
+
+    tbody.querySelectorAll("tr").forEach((row) => {
+      if (!row.dataset.reportResultId && row.children.length === 1) row.remove();
+    });
+
+    const rowClass = payload.result === "x" ? "row-result-x" : "row-result-triangle";
+    const actionHtml = payload.abnormal_url
+      ? `<button class="btn btn-sm btn-outline-primary abnormal-trigger" type="button"
+            data-bs-toggle="modal" data-bs-target="#abnormalModal"
+            data-action="${payload.abnormal_url}"
+            data-result="${payload.result}"
+            data-id="${payload.result_id}"
+            data-symbol="${payload.symbol || ""}"
+            data-date="${payload.date || ""}"
+            data-content="${payload.content || ""}"
+            data-note="${payload.note || payload.content || ""}"
+            data-countermeasure=""
+            data-confirm-date=""
+            data-result-after-fix=""
+            data-status="${payload.status || "open"}">Sua xu ly</button>`
+      : "";
+    const html = options.compact ? `
+      <td>${payload.symbol || ""}</td>
+      <td>${payload.date_label || payload.date || ""}</td>
+      <td>${payload.note || payload.content || ""}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td class="no-print">${actionHtml}</td>` : `
+
+      <td>${existing ? existing.children[0]?.textContent || "" : tbody.querySelectorAll("[data-report-result-id]").length + 1}</td>
+      <td>${payload.symbol || ""}</td>
+      <td>${payload.date_label || payload.date || ""}</td>
+      <td>${payload.note || payload.content || ""}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="badge status-badge status-${payload.status || "open"}">${payload.status || "open"}</span></td>
+      <td class="no-print">${actionHtml}</td>`;
+
+    if (existing) {
+      existing.className = rowClass;
+      existing.innerHTML = html;
+      return;
+    }
+    const tr = document.createElement("tr");
+    tr.className = rowClass;
+    tr.dataset.reportResultId = payload.result_id;
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  };
+
   document.querySelectorAll(".js-result-btn").forEach((button) => {
     button.addEventListener("click", async () => {
       const formData = new FormData();
@@ -76,16 +157,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const row = button.closest("tr");
         if (row) {
           row.classList.remove("row-result-o", "row-result-x", "row-result-triangle", "row-result-none");
-          row.classList.add(payload.result === "o" ? "row-result-o" : "row-result-none");
+          row.classList.add(resultClassMap[payload.result] || "row-result-none");
           const resultCell = row.querySelector("[data-result-cell]");
           if (resultCell) {
-            resultCell.innerHTML = payload.result === "o"
-              ? '<span class="badge badge-result-o">o</span>'
-              : '<span class="badge badge-result-none">Chưa điền</span>';
+            resultCell.innerHTML = resultBadgeMap[payload.result] || resultBadgeMap.empty;
           }
           const noteCell = row.querySelector("[data-note-cell]");
           if (noteCell) noteCell.textContent = payload.note || "-";
         }
+        window.updateAbnormalTableFromPayload(payload);
       } catch (error) {
         window.alert(error.message);
       } finally {
@@ -112,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // ===== MODAL BẤT THƯỜNG =====
+  // ===== MODAL Báº¤T THÆ¯á»œNG =====
   const modal = document.getElementById("abnormalModal");
   const form = document.getElementById("abnormalForm");
 
@@ -137,7 +217,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ===== THANH THÔNG BÁO CỐ ĐỊNH =====
+  // ===== THANH THĂ”NG BĂO Cá» Äá»NH =====
   const notifBar = document.getElementById("notif-bar");
   const toggleBtn = document.getElementById("notif-toggle-btn");
   const toggleIcon = document.getElementById("notif-toggle-icon");
@@ -145,14 +225,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const mainWrapper = document.querySelector(".has-notif-bar");
 
   if (notifBar && toggleBtn && panel) {
-    // Khôi phục trạng thái từ localStorage
+    // KhĂ´i phá»¥c tráº¡ng thĂ¡i tá»« localStorage
     const savedState = localStorage.getItem("notif-bar-open");
     let isOpen = savedState === "true";
 
     function updatePanelState(animate) {
       if (isOpen) {
         panel.style.display = "block";
-        toggleIcon.textContent = "▲";
+        toggleIcon.textContent = "â–²";
         document.body.classList.add("notif-panel-open");
         if (mainWrapper) {
           const panelH = panel.offsetHeight;
@@ -160,7 +240,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } else {
         panel.style.display = "none";
-        toggleIcon.textContent = "▼";
+        toggleIcon.textContent = "â–¼";
         document.body.classList.remove("notif-panel-open");
         if (mainWrapper) {
           mainWrapper.style.paddingTop = "";
@@ -176,12 +256,12 @@ document.addEventListener("DOMContentLoaded", () => {
       updatePanelState(true);
     });
 
-    // Cập nhật padding khi resize
+    // Cáº­p nháº­t padding khi resize
     window.addEventListener("resize", () => {
       if (isOpen) updatePanelState(false);
     });
 
-    // Xử lý nút ẩn từng thông báo (AJAX để không reload trang)
+    // Xá»­ lĂ½ nĂºt áº©n tá»«ng thĂ´ng bĂ¡o (AJAX Ä‘á»ƒ khĂ´ng reload trang)
     document.querySelectorAll(".notif-dismiss-form").forEach((dismissForm) => {
       dismissForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -190,7 +270,7 @@ document.addEventListener("DOMContentLoaded", () => {
           await fetch(url, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } });
         } catch (_) {}
 
-        // Ẩn item khỏi panel
+        // áº¨n item khá»i panel
         const item = dismissForm.closest(".notif-panel-item");
         if (item) {
           item.style.transition = "opacity 0.25s, max-height 0.3s";
@@ -204,13 +284,13 @@ document.addEventListener("DOMContentLoaded", () => {
           }, 50);
           setTimeout(() => {
             item.remove();
-            // Cập nhật số đếm
+            // Cáº­p nháº­t sá»‘ Ä‘áº¿m
             const remaining = document.querySelectorAll(".notif-panel-item").length;
             const countBadge = document.querySelector(".notif-bar-count");
             const previewText = document.querySelector(".notif-bar-title-text");
             if (countBadge) countBadge.textContent = remaining;
             if (remaining === 0) {
-              // Ẩn toàn bộ thanh thông báo
+              // áº¨n toĂ n bá»™ thanh thĂ´ng bĂ¡o
               notifBar.style.transition = "opacity 0.4s";
               notifBar.style.opacity = "0";
               setTimeout(() => {
@@ -221,7 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const firstTitle = document.querySelector(".notif-panel-item-title");
               if (firstTitle) previewText.textContent = firstTitle.textContent;
             }
-            // Cập nhật padding
+            // Cáº­p nháº­t padding
             if (isOpen && mainWrapper) {
               const panelH = panel.offsetHeight;
               mainWrapper.style.paddingTop = (44 + panelH + 20) + "px";

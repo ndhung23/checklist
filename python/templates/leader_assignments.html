@@ -1,70 +1,219 @@
 {% extends "admin_layout.html" %}
 
-{% block title %}Gan staff vao leader{% endblock %}
+{% block title %}Tổ phó đang quản lý{% endblock %}
+
+{% macro staff_form(staff=None) %}
+<form method="post" class="row g-3" action="{{ url_for('admin.users') }}">
+    <input type="hidden" name="next" value="{{ url_for('admin.leader_assignments', q=filters.q, status=filters.status, gender=filters.gender, page=pagination.page) }}">
+    <input type="hidden" name="action" value="{{ 'update' if staff else 'create' }}">
+    <input type="hidden" name="role" value="staff">
+    {% if staff %}<input type="hidden" name="user_id" value="{{ staff.id }}">{% endif %}
+
+    <div class="col-md-4">
+        <label class="form-label">Username</label>
+        <input class="form-control" name="username" value="{{ staff.username if staff else '' }}" required>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Code</label>
+        <input class="form-control" name="employee_code" value="{{ staff.employee_code if staff else '' }}" required>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Họ và tên</label>
+        <input class="form-control" name="full_name" value="{{ staff.full_name if staff else '' }}" required>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Outlook</label>
+        <input class="form-control" type="email" name="outlook_email" value="{{ staff.outlook_email if staff and staff.outlook_email else current_user.outlook_email or '' }}">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Gender</label>
+        <select class="form-select" name="gender">
+            <option value="">Unknown</option>
+            {% for gender in genders %}
+                <option value="{{ gender }}" {% if staff and staff.gender == gender %}selected{% endif %}>{{ gender }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Bộ phận</label>
+        <select class="form-select" name="department" required>
+            {% for department in departments %}
+                <option value="{{ department }}" {% if (staff and staff.department == department) or (not staff and department == current_user.department) %}selected{% endif %}>{{ department }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Status</label>
+        <select class="form-select" name="is_active">
+            <option value="1" {% if not staff or staff.is_active %}selected{% endif %}>Active</option>
+            <option value="0" {% if staff and not staff.is_active %}selected{% endif %}>Locked</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Password</label>
+        <input class="form-control" type="text" name="password" placeholder="{% if staff %}Giữ nguyên{% else %}123456{% endif %}">
+    </div>
+    <div class="col-12 d-flex justify-content-end gap-2">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Đóng</button>
+        <button class="btn btn-primary" type="submit">{{ 'Cập nhật' if staff else 'Tạo mới' }}</button>
+    </div>
+</form>
+{% endmacro %}
 
 {% block admin_content %}
-<div class="card mb-4">
-    <div class="card-header bg-white border-0 pb-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+<section class="card mb-3">
+    <div class="card-header bg-white border-0 pb-0 d-flex justify-content-between align-items-center gap-2">
         <div>
-            <h2 class="section-title mb-1">Gan staff vao leader</h2>
-            <div class="text-muted small">Chon leader phu trach cho tung staff.</div>
+            <h2 class="section-title mb-1">Tổ phó đang quản lý</h2>
+            <div class="text-muted small">Danh sách tổ phó thuộc thẩm quyền của {{ current_user.full_name }}.</div>
         </div>
-        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('checklist.dashboard') }}">
-            <i class="bi bi-arrow-left"></i> Daily Sheets
-        </a>
+        <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#createStaffModal">
+            <i class="bi bi-person-plus"></i> Tạo tổ phó
+        </button>
     </div>
-    <div class="card-body pt-3">
-        <div class="leader-summary-grid mb-3">
-            {% for leader in leaders %}
-                <div class="leader-summary-card">
-                    <div class="fw-bold">{{ leader.full_name }}</div>
-                    <div class="text-muted small">{{ leader.employee_code }} | {{ leader.line_name }}</div>
-                    <div class="mt-2">
-                        <span class="badge text-bg-primary">{{ leader.led_users|length }} staff</span>
-                    </div>
-                </div>
-            {% else %}
-                <div class="text-muted">Chưa có leader đang hoạt động.</div>
-            {% endfor %}
-        </div>
+    <div class="card-body">
+        <form class="row g-2 align-items-end" method="get">
+            <div class="col-12 col-lg-5">
+                <label class="form-label">Tìm kiếm</label>
+                <input class="form-control" name="q" value="{{ filters.q }}" placeholder="Tên, username, code, outlook, bộ phận">
+            </div>
+            <div class="col-6 col-lg-2">
+                <label class="form-label">Gender</label>
+                <select class="form-select" name="gender">
+                    <option value="">All</option>
+                    {% for gender in genders %}
+                        <option value="{{ gender }}" {% if filters.gender == gender %}selected{% endif %}>{{ gender }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-lg-2">
+                <label class="form-label">Status</label>
+                <select class="form-select" name="status">
+                    <option value="">All</option>
+                    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="locked" {% if filters.status == 'locked' %}selected{% endif %}>Locked</option>
+                </select>
+            </div>
+            <div class="col-12 col-lg-3 d-flex gap-2">
+                <button class="btn btn-primary flex-fill" type="submit"><i class="bi bi-search"></i></button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('admin.leader_assignments') }}">Clear</a>
+            </div>
+        </form>
+    </div>
+</section>
 
+<section class="card">
+    <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-checklist align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Staff</th>
-                        <th>Line hom nay</th>
-                        <th>Leader hien tai</th>
-                        <th>Gan leader</th>
+                        <th>ID</th>
+                        <th>Tổ phó</th>
+                        <th>Outlook</th>
+                        <th>Tổ trưởng</th>
+                        <th>Gender</th>
+                        <th>Status</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for staff in staff_assignments %}
                     <tr>
-                        <td>{{ staff.full_name }} <span class="text-muted">({{ staff.employee_code }})</span></td>
-                        <td>{{ staff.line_name }}</td>
-                        <td>{{ staff.leader.full_name if staff.leader else '-' }}</td>
+                        <td>{{ (pagination.page - 1) * 10 + loop.index }}</td>
                         <td>
-                            <form class="assignment-form" method="post" action="{{ url_for('admin.assign_leader', user_id=staff.id) }}">
-                                <select class="form-select form-select-sm" name="leader_id">
-                                    {% for leader in leaders %}
-                                        <option value="{{ leader.id }}" {% if staff.leader_id == leader.id %}selected{% endif %}>{{ leader.full_name }}</option>
-                                    {% endfor %}
-                                </select>
-                                <button class="btn btn-sm btn-primary" type="submit" title="Luu">
-                                    <i class="bi bi-check2"></i>
-                                </button>
-                            </form>
+                            <div class="fw-semibold">{{ staff.full_name }}</div>
+                            <div class="small text-muted">{{ staff.username }} | {{ staff.employee_code }}</div>
+                        </td>
+                        <td class="text-break">{{ staff.outlook_email or '-' }}</td>
+                        <td>{{ staff.leader.full_name if staff.leader else '-' }}</td>
+                        <td>{{ staff.gender or '-' }}</td>
+                        <td><span class="badge {% if staff.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ "Active" if staff.is_active else "Locked" }}</span></td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#viewStaff{{ staff.id }}" title="View"><i class="bi bi-eye"></i></button>
+                                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#editStaff{{ staff.id }}" title="Edit"><i class="bi bi-pencil"></i></button>
+                                <form method="post" action="{{ url_for('admin.toggle_user', user_id=staff.id) }}">
+                                    <input type="hidden" name="next" value="{{ url_for('admin.leader_assignments', q=filters.q, status=filters.status, gender=filters.gender, page=pagination.page) }}">
+                                    <button class="btn btn-sm btn-outline-warning" type="submit" title="Block"><i class="bi bi-slash-circle"></i></button>
+                                </form>
+                                <form method="post" action="{{ url_for('admin.delete_user', user_id=staff.id) }}" onsubmit="return confirm('Xóa tài khoản này?');">
+                                    <input type="hidden" name="next" value="{{ url_for('admin.leader_assignments', q=filters.q, status=filters.status, gender=filters.gender, page=pagination.page) }}">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="4" class="text-center text-muted py-4">Không có staff đang hoạt động.</td>
-                    </tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">Không có tổ phó.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
+</section>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3" aria-label="Staff pagination">
+    <ul class="pagination justify-content-end mb-0">
+        {% for page_num in range(1, pagination.pages + 1) %}
+            <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('admin.leader_assignments', q=filters.q, status=filters.status, gender=filters.gender, page=page_num) }}">{{ page_num }}</a>
+            </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+
+<div class="modal fade" id="createStaffModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5">Tạo tổ phó</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">{{ staff_form() }}</div>
+        </div>
+    </div>
 </div>
+
+{% for staff in staff_assignments %}
+<div class="modal fade" id="editStaff{{ staff.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5">Sửa tổ phó - {{ staff.username }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">{{ staff_form(staff) }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="viewStaff{{ staff.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5">{{ staff.full_name }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row mb-0 view-grid">
+                    <dt class="col-4">Username</dt><dd class="col-8">{{ staff.username }}</dd>
+                    <dt class="col-4">Password</dt><dd class="col-8">*****</dd>
+                    <dt class="col-4">Code</dt><dd class="col-8">{{ staff.employee_code }}</dd>
+                    <dt class="col-4">Họ và tên</dt><dd class="col-8">{{ staff.full_name }}</dd>
+                    <dt class="col-4">Outlook</dt><dd class="col-8 text-break">{{ staff.outlook_email or '-' }}</dd>
+                    <dt class="col-4">Gender</dt><dd class="col-8">{{ staff.gender or '-' }}</dd>
+                    <dt class="col-4">Bộ phận</dt><dd class="col-8">{{ staff.department }}</dd>
+                    <dt class="col-4">Vai trò</dt><dd class="col-8">{{ role_label(staff.role) }}</dd>
+                    <dt class="col-4">Tổ trưởng</dt><dd class="col-8">{{ staff.leader.full_name if staff.leader else '-' }}</dd>
+                    <dt class="col-4">Status</dt><dd class="col-8">{{ 'Active' if staff.is_active else 'Locked' }}</dd>
+                    <dt class="col-4">Created</dt><dd class="col-8">{{ staff.created_at|datetime_local }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}

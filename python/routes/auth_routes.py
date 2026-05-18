@@ -39,7 +39,7 @@ def admin_required(view):
         if not user:
             flash("Vui lòng đăng nhập để tiếp tục.", "warning")
             return redirect(url_for("auth.login"))
-        if user.role != "admin":
+        if user.role not in {"admin", "leader"}:
             flash("Bạn không có quyền truy cập trang này.", "danger")
             return redirect(url_for("checklist.dashboard"))
         return view(*args, **kwargs)
@@ -54,7 +54,7 @@ def manager_or_admin_required(view):
         if not user:
             flash("Vui lòng đăng nhập để tiếp tục.", "warning")
             return redirect(url_for("auth.login"))
-        if user.role not in {"manager", "admin"}:
+        if user.role not in {"manager", "admin", "leader"}:
             flash("Bạn không có quyền truy cập trang này.", "danger")
             return redirect(url_for("checklist.dashboard"))
         return view(*args, **kwargs)
@@ -135,9 +135,19 @@ def build_excel_month_context(user, year: int, month: int):
     month_start = date(year, month, 1)
     month_end = date(year, month, days_in_month)
 
-    latest_sheet = (
+    month_sheets = (
+        DailyCheckSheet.query.filter(
+            DailyCheckSheet.user_id == user.id,
+            DailyCheckSheet.check_date >= month_start,
+            DailyCheckSheet.check_date <= month_end,
+        )
+        .order_by(DailyCheckSheet.check_date.asc(), DailyCheckSheet.id.asc())
+        .all()
+    )
+    latest_month_sheet = month_sheets[-1] if month_sheets else None
+    latest_sheet = latest_month_sheet or (
         DailyCheckSheet.query.filter_by(user_id=user.id)
-        .order_by(DailyCheckSheet.check_date.desc())
+        .order_by(DailyCheckSheet.check_date.desc(), DailyCheckSheet.id.desc())
         .first()
     )
     if not latest_sheet:
@@ -149,22 +159,38 @@ def build_excel_month_context(user, year: int, month: int):
             "excel_year": year,
             "excel_month": month,
             "latest_sheet_id": None,
+            "sheet_id_by_day": {},
+            "status_by_day": {},
+            "line_name": getattr(user, "line_name", None),
         }
+
+    active_line_name = latest_sheet.line_name or getattr(user, "line_name", None)
+    month_sheets = [sheet for sheet in month_sheets if sheet.line_name == active_line_name]
 
     item_query = ChecklistItem.query.filter_by(
         template_id=latest_sheet.template_id,
         is_active=True,
     )
-    if getattr(user, "line_name", None):
-        item_query = item_query.filter(ChecklistItem.line.has(line_name=user.line_name))
+    if active_line_name:
+        item_query = item_query.filter(ChecklistItem.line.has(line_name=active_line_name))
 
     items = item_query.order_by(ChecklistItem.check_time.asc(), ChecklistItem.item_order.asc()).all()
-
-    month_sheets = DailyCheckSheet.query.filter(
-        DailyCheckSheet.user_id == user.id,
-        DailyCheckSheet.check_date >= month_start,
-        DailyCheckSheet.check_date <= month_end,
-    ).all()
+    items = sorted(
+        items,
+        key=lambda item: (
+            (item.check_time.hour if item.check_time else 0)
+            + (
+                24
+                if active_line_name == "Line D"
+                and item.check_time
+                and item.check_time.hour < 6
+                else 0
+            ),
+            item.check_time.minute if item.check_time else 0,
+            item.item_order or 0,
+            item.id,
+        ),
+    )
 
     result_by_item_day: dict[tuple[int, int], str] = {}
     result_id_by_item_day: dict[tuple[int, int], int] = {}
@@ -241,6 +267,7 @@ def build_excel_month_context(user, year: int, month: int):
         "latest_sheet_id": latest_sheet.id,
         "sheet_id_by_day": sheet_id_by_day,
         "status_by_day": status_by_day,
+        "line_name": active_line_name,
     }
 
 
@@ -256,24 +283,33 @@ def profile():
 
     user = get_current_user()
 
-    # ── Đổi mật khẩu (POST) ──────────────────────────────────────────────────
     if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        outlook_email = request.form.get("outlook_email", "").strip()
+        gender = request.form.get("gender", "").strip()
+        department = request.form.get("department", "").strip()
         old_password = request.form.get("old_password", "")
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
 
-        if not user.check_password(old_password):
+        if not full_name or not department:
+            flash("Vui lòng nhập đầy đủ họ tên và bộ phận.", "danger")
+        elif gender and gender not in {"male", "female", "other"}:
+            flash("Giới tính không hợp lệ.", "danger")
+        elif new_password and not user.check_password(old_password):
             flash("Mật khẩu cũ không chính xác.", "danger")
-        elif new_password != confirm_password:
+        elif new_password and new_password != confirm_password:
             flash("Mật khẩu mới không khớp.", "danger")
-        elif len(new_password) < 1:
-            flash("Mật khẩu mới không được để trống.", "danger")
         else:
-            user.set_password(new_password)
+            user.full_name = full_name
+            user.outlook_email = outlook_email or None
+            user.gender = gender or None
+            user.department = department
+            if new_password:
+                user.set_password(new_password)
             db.session.commit()
-            flash("Đổi mật khẩu thành công.", "success")
+            flash("Cập nhật thông tin thành công.", "success")
             return redirect(url_for("auth.profile"))
-        # Có lỗi → redirect về profile với flag mở popup
         return redirect(url_for("auth.profile", _anchor="pw-error", show_pw=1))
 
     # ── Bộ lọc ngày ──────────────────────────────────────────────────────────
@@ -599,4 +635,3 @@ def print_profile_report():
         weekly_rows=weekly_rows,
         all_category_types=all_category_types,
     )
-

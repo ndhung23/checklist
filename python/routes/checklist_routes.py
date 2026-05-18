@@ -52,7 +52,7 @@ def parse_date(raw_value: str | None, fallback: date | None = None) -> date:
 
 
 def managed_line_names(user: User) -> set[str]:
-    if user.role in {"admin", "manager"}:
+    if user.role in {"admin", "manager", "leader"}:
         return {line.line_name for line in Line.query.filter_by(is_active=True).all()}
     return {mapping.line.line_name for mapping in user.user_lines}
 
@@ -126,7 +126,11 @@ def build_outlook_body(sheet: DailyCheckSheet, results: list[DailyCheckResult]) 
     for index, result in enumerate(results, start=1):
         value = result.result or "empty"
         note = f" | Note: {result.abnormal_note}" if result.abnormal_note else ""
-        lines.append(f"{index}. {result.check_time.strftime('%H:%M')} | {result.symbol} | {value} | {result.content}{note}")
+        actual_date = result_work_date(sheet.line_name, sheet.check_date, result.check_time)
+        lines.append(
+            f"{index}. {actual_date.strftime('%d/%m/%Y')} {result.check_time.strftime('%H:%M')} | "
+            f"{result.symbol} | {value} | {result.content}{note}"
+        )
     return "\n".join(lines)
 
 
@@ -236,6 +240,24 @@ def period_label_vi(period_type: str) -> str:
     return {"day": "trong ngày", "week": "trong tuần", "month": "trong tháng"}.get(period_type, period_type)
 
 
+def line_time_sort_key(line_name: str | None, check_time, fallback_id: int = 0) -> tuple[int, int, int]:
+    hour = check_time.hour if check_time else 0
+    minute = check_time.minute if check_time else 0
+    if line_name == "Line D" and hour < 6:
+        hour += 24
+    return hour, minute, fallback_id
+
+
+def result_work_date(line_name: str | None, sheet_date: date, check_time) -> date:
+    if line_name == "Line D" and check_time and check_time.hour >= 22:
+        return sheet_date - timedelta(days=1)
+    return sheet_date
+
+
+def result_work_datetime(line_name: str | None, sheet_date: date, check_time) -> datetime:
+    return datetime.combine(result_work_date(line_name, sheet_date, check_time), check_time)
+
+
 def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
     template_id = get_template_id()
 
@@ -251,10 +273,14 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
             due_results = [
                 result
                 for result in today_sheet.results
-                if (not result.result) and now.time() <= result.check_time <= one_hour_later.time()
+                if (not result.result)
+                and now <= result_work_datetime(today_sheet.line_name, today_sheet.check_date, result.check_time) <= one_hour_later
             ]
             if due_results:
-                first_due = sorted(due_results, key=lambda item: item.check_time)[0]
+                first_due = sorted(
+                    due_results,
+                    key=lambda item: result_work_datetime(today_sheet.line_name, today_sheet.check_date, item.check_time),
+                )[0]
                 dedupe_key = f"email-staff-due:{current_user.id}:{anchor_date.isoformat()}:{first_due.check_time.strftime('%H%M')}"
                 upsert_email_reminder(
                     current_user,
@@ -281,7 +307,7 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
             )
             pending_sheets = [sheet for sheet in sheets if not sheet_is_submitted(sheet)]
             if period_type == "day" and not sheets:
-                pending_sheets = [ensure_daily_sheet_and_results(current_user.id, template_id, anchor_date)]
+                pending_sheets = []
             dedupe_key = f"staff-submit:{current_user.id}:{period_type}:{start_date.isoformat()}"
             if not pending_sheets:
                 resolve_notification(current_user, dedupe_key)
@@ -368,16 +394,43 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
 
     if current_user.role == "leader":
         # Nhắc xác nhận checklist staff trong ngày
-        line_names = managed_line_names(current_user)
         sheets = (
             DailyCheckSheet.query.join(User)
             .filter(
                 User.role == "staff",
-                DailyCheckSheet.line_name.in_(line_names),
+                User.leader_id == current_user.id,
                 DailyCheckSheet.check_date == anchor_date,
             )
             .all()
         )
+        if anchor_date == date.today():
+            now = datetime.now()
+            for sheet in sheets:
+                if sheet_is_submitted(sheet) or not sheet.results:
+                    continue
+                incomplete_count = sum(1 for result in sheet.results if not result.result)
+                if not incomplete_count:
+                    continue
+                last_result = max(
+                    sheet.results,
+                    key=lambda result: line_time_sort_key(sheet.line_name, result.check_time, result.id),
+                )
+                final_dt = datetime.combine(anchor_date, last_result.check_time)
+                if sheet.line_name == "Line D" and last_result.check_time.hour < 6:
+                    final_dt += timedelta(days=1)
+                if final_dt - timedelta(hours=2) <= now <= final_dt:
+                    upsert_email_reminder(
+                        current_user,
+                        "Nhac nho: staff chua nop checklist",
+                        (
+                            f"{sheet.user.full_name} con {incomplete_count} hang muc chua hoan thanh "
+                            f"checklist {sheet.line_name} ngay {anchor_date.strftime('%d/%m/%Y')}."
+                        ),
+                        "day",
+                        anchor_date,
+                        f"leader-staff-due:{current_user.id}:{sheet.id}:{anchor_date.isoformat()}",
+                        sheet.id,
+                    )
         pending_sheets = [
             sheet
             for sheet in sheets
@@ -425,6 +478,22 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
                 )
             else:
                 resolve_notification(current_user, dedupe_key_period)
+
+        now = datetime.now()
+        if now.weekday() == 4 and now.hour >= 17:
+            start_date, end_date = period_bounds(anchor_date, "week")
+            for manager in higher_level_users():
+                upsert_email_reminder(
+                    manager,
+                    "Nhac nho: can nhan bao cao tuan",
+                    (
+                        f"To truong {current_user.full_name} can nop bao cao tuan "
+                        f"({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}) len quan ly."
+                    ),
+                    "week",
+                    anchor_date,
+                    f"manager-weekly-leader-submit:{manager.id}:{current_user.id}:{start_date.isoformat()}",
+                )
 
     if current_user.role in {"manager", "admin"}:
         # Nhắc xác nhận checklist tổ trưởng theo tuần/tháng
@@ -524,12 +593,18 @@ def can_view_sheet(user: User, sheet: DailyCheckSheet) -> bool:
     if user.role in {"admin", "manager"}:
         return True
     if user.role == "leader":
-        return sheet.line_name in managed_line_names(user)
+        return sheet.user.role == "staff" and sheet.user.leader_id == user.id
     return sheet.user_id == user.id
 
 
 def can_edit_result(user: User, result: DailyCheckResult) -> bool:
-    return user.role == "admin" or result.user_id == user.id
+    if result.daily_sheet.status in {SHEET_STATUS_SUBMITTED, SHEET_STATUS_CONFIRMED} and user.role == "staff":
+        return False
+    if user.role in {"admin", "manager"}:
+        return True
+    if user.role == "leader":
+        return result.daily_sheet.user.role == "staff" and result.daily_sheet.user.leader_id == user.id
+    return result.user_id == user.id
 
 
 def can_submit_sheet(user: User, sheet: DailyCheckSheet) -> bool:
@@ -537,9 +612,11 @@ def can_submit_sheet(user: User, sheet: DailyCheckSheet) -> bool:
 
 
 def can_confirm_sheet(user: User, sheet: DailyCheckSheet) -> bool:
+    if user.role == "admin":
+        return True
     if user.role == "leader":
-        return sheet.user.role == "staff" and sheet.line_name in managed_line_names(user)
-    if user.role in {"manager", "admin"}:
+        return sheet.user.role == "staff" and sheet.user.leader_id == user.id
+    if user.role == "manager":
         return True
     return False
 
@@ -548,7 +625,7 @@ def can_write_leader_note(user: User, result: DailyCheckResult) -> bool:
     if user.role in {"admin", "manager"}:
         return True
     if user.role == "leader":
-        return result.daily_sheet.user.leader_id == user.id or result.daily_sheet.line_name in managed_line_names(user)
+        return result.daily_sheet.user.role == "staff" and result.daily_sheet.user.leader_id == user.id
     return False
 
 
@@ -605,6 +682,10 @@ def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date
     if sheet_line:
         active_items_query = active_items_query.filter(ChecklistItem.line_id == sheet_line.id)
     active_items = active_items_query.order_by(ChecklistItem.check_time.asc(), ChecklistItem.item_order.asc()).all()
+    active_items = sorted(
+        active_items,
+        key=lambda item: (*line_time_sort_key(sheet.line_name, item.check_time), item.item_order or 0),
+    )
     if not active_items:
         active_items = [
             item
@@ -626,7 +707,7 @@ def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date
                 daily_sheet_id=sheet.id,
                 checklist_item_id=item.id,
                 user_id=user_id,
-                check_date=selected_date,
+                check_date=result_work_date(sheet.line_name, selected_date, item.check_time),
                 symbol=item.symbol,
                 check_time=item.check_time,
                 content=item.content_vi,
@@ -635,6 +716,10 @@ def ensure_daily_sheet_and_results(user_id: int, template_id: int, selected_date
                 checked_at=None,
             )
         )
+    for result in sheet.results:
+        expected_date = result_work_date(sheet.line_name, sheet.check_date, result.check_time)
+        if result.check_date != expected_date:
+            result.check_date = expected_date
     db.session.commit()
     return sheet
 
@@ -643,8 +728,9 @@ def get_target_users(current_user: User, selected_user_id: int | None, selected_
     query = User.query.filter(User.role != "admin", User.is_active.is_(True))
     if current_user.role == "staff":
         query = query.filter(User.id == current_user.id)
-    elif current_user.role == "leader":
-        query = query.filter(User.line_name.in_(managed_line_names(current_user)))
+        return query.order_by(User.full_name.asc()).all()
+    if current_user.role == "leader":
+        query = query.filter(User.role == "staff", User.leader_id == current_user.id)
 
     if selected_user_id:
         query = query.filter(User.id == selected_user_id)
@@ -666,21 +752,23 @@ def build_dashboard_context(
     current_user = g.current_user
     template_id = get_template_id()
     build_reminders_for_user(current_user, selected_date)
+    staff_missing_line = current_user.role == "staff" and not selected_line
 
     target_users = get_target_users(current_user, selected_user_id, selected_line)
-    for user in target_users:
-        ensure_daily_sheet_and_results(
-            user.id,
-            template_id,
-            selected_date,
-            selected_line if current_user.role == "staff" else None,
-        )
+    if not staff_missing_line:
+        for user in target_users:
+            ensure_daily_sheet_and_results(
+                user.id,
+                template_id,
+                selected_date,
+                selected_line if current_user.role == "staff" else None,
+            )
 
     query = DailyCheckSheet.query.join(User).filter(DailyCheckSheet.check_date == selected_date)
     if current_user.role == "staff":
         query = query.filter(DailyCheckSheet.user_id == current_user.id)
     elif current_user.role == "leader":
-        query = query.filter(DailyCheckSheet.line_name.in_(managed_line_names(current_user)))
+        query = query.filter(User.role == "staff", User.leader_id == current_user.id)
     if selected_line:
         query = query.filter(DailyCheckSheet.line_name == selected_line)
     if selected_user_id:
@@ -727,8 +815,11 @@ def build_dashboard_context(
 
         all_results = (
             DailyCheckResult.query.filter_by(daily_sheet_id=selected_sheet.id)
-            .order_by(DailyCheckResult.check_time.asc(), DailyCheckResult.id.asc())
             .all()
+        )
+        all_results = sorted(
+            all_results,
+            key=lambda result: line_time_sort_key(selected_sheet.line_name, result.check_time, result.id),
         )
         for result in all_results:
             if result.result == RESULT_OK:
@@ -740,7 +831,10 @@ def build_dashboard_context(
             else:
                 result_summary["empty"] += 1
 
-        results = results_query.order_by(DailyCheckResult.check_time.asc(), DailyCheckResult.id.asc()).all()
+        results = sorted(
+            results_query.all(),
+            key=lambda result: line_time_sort_key(selected_sheet.line_name, result.check_time, result.id),
+        )
         abnormal_reports = [
             report
             for report in selected_sheet.abnormal_reports
@@ -775,16 +869,19 @@ def build_dashboard_context(
         visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
         visible_users = User.query.filter(User.role != "admin").order_by(User.full_name.asc()).all()
     elif current_user.role == "leader":
-        line_names = managed_line_names(current_user)
-        visible_lines = Line.query.filter(Line.line_name.in_(line_names)).order_by(Line.line_name.asc()).all()
-        visible_users = User.query.filter(User.line_name.in_(line_names)).order_by(User.full_name.asc()).all()
+        visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
+        visible_users = User.query.filter(
+            User.role == "staff",
+            User.leader_id == current_user.id,
+            User.is_active.is_(True),
+        ).order_by(User.full_name.asc()).all()
     else:
         visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
         visible_users = []
 
     staff_assignments = []
     leaders_for_assignment = []
-    if current_user.role in {"manager", "admin"}:
+    if current_user.role in {"manager", "admin", "leader"}:
         leaders_for_assignment = User.query.filter(
             User.role == "leader",
             User.is_active.is_(True),
@@ -815,6 +912,7 @@ def build_dashboard_context(
         "visible_users": visible_users,
         "staff_assignments": staff_assignments,
         "can_change_line": can_change_line,
+        "staff_must_choose_line": bool(staff_missing_line and selected_sheet is None),
         "leaders_for_assignment": leaders_for_assignment,
         "selected_date": selected_date.isoformat(),
         "selected_line": selected_line,
@@ -823,10 +921,24 @@ def build_dashboard_context(
         "result_filter": result_filter,
         "active_section": active_section,
         "can_edit_selected": bool(
-            selected_sheet and (current_user.role == "admin" or current_user.id == selected_sheet.user_id)
+            selected_sheet
+            and (
+                current_user.role in {"admin", "manager"}
+                or current_user.id == selected_sheet.user_id
+                or (
+                    current_user.role == "leader"
+                    and selected_sheet.user.role == "staff"
+                    and selected_sheet.user.leader_id == current_user.id
+                )
+            )
+            and not (
+                current_user.role == "staff"
+                and selected_sheet.status in {SHEET_STATUS_SUBMITTED, SHEET_STATUS_CONFIRMED}
+            )
         ),
         "can_submit_selected": bool(selected_sheet and can_submit_sheet(current_user, selected_sheet)),
         "can_confirm_selected": bool(selected_sheet and can_confirm_sheet(current_user, selected_sheet)),
+        "result_work_date": result_work_date,
         "current_endpoint": "checklist.dashboard",
     }
 
@@ -915,7 +1027,8 @@ def submit_sheet(sheet_id: int):
     db.session.commit()
     leader = sheet.user.leader or (leader_users_for_line(sheet.line_name)[0] if leader_users_for_line(sheet.line_name) else None)
     if leader and leader.outlook_email:
-        results = DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).order_by(DailyCheckResult.check_time.asc()).all()
+        results = DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).all()
+        results = sorted(results, key=lambda result: line_time_sort_key(sheet.line_name, result.check_time, result.id))
         print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
         send_outlook_email(
             leader.outlook_email,
@@ -966,18 +1079,15 @@ def send_sheet_outlook(sheet_id: int):
     if supervisor is None:
         supervisor = sheet.user.leader or (leader_users_for_line(sheet.line_name)[0] if leader_users_for_line(sheet.line_name) else None)
     if supervisor is None:
-        flash("Không tìm thấy leader/ cấp trên có Outlook để gửi.", "danger")
+        flash("Không tìm thấy tổ trưởng/cấp trên có Outlook để gửi.", "danger")
         return redirect_to_sheet(sheet)
     supervisor_outlook = supervisor.outlook_email
     if not supervisor_outlook:
         flash("Tài khoản cấp trên chưa có Outlook.", "danger")
         return redirect_to_sheet(sheet)
 
-    results = (
-        DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id)
-        .order_by(DailyCheckResult.check_time.asc(), DailyCheckResult.id.asc())
-        .all()
-    )
+    results = DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).all()
+    results = sorted(results, key=lambda result: line_time_sort_key(sheet.line_name, result.check_time, result.id))
     subject = f"Checklist {sheet.user.full_name} - {sheet.line_name} - {sheet.check_date.strftime('%d/%m/%Y')}"
     print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
     body = f"{build_outlook_body(sheet, results)}\n\nPrint URL: {print_url}"
@@ -1111,6 +1221,8 @@ def ajax_update_result(result_id: int):
 
     result.result = selected_result
     result.checked_at = datetime.now() if selected_result else None
+    actual_date = result_work_date(result.daily_sheet.line_name, result.daily_sheet.check_date, result.check_time)
+    result.check_date = actual_date
 
     # Nếu xóa kết quả → hủy abnormal report
     if selected_result == RESULT_EMPTY and result.abnormal_reports:
@@ -1119,6 +1231,27 @@ def ajax_update_result(result_id: int):
     elif selected_result == RESULT_OK and result.abnormal_reports:
         result.abnormal_reports[0].status = ABNORMAL_STATUS_CANCELLED
         result.abnormal_note = None
+    elif selected_result in {RESULT_NG, RESULT_ABNORMAL}:
+        abnormal_content = result.abnormal_note or result.content or result.symbol
+        result.abnormal_note = abnormal_content
+        report = result.abnormal_reports[0] if result.abnormal_reports else None
+        if report is None:
+            report = AbnormalReport(
+                daily_sheet=result.daily_sheet,
+                daily_check_result=result,
+                user=result.user,
+                symbol=result.symbol,
+                occurred_date=actual_date,
+                abnormal_content=abnormal_content,
+                status=ABNORMAL_STATUS_OPEN,
+            )
+            db.session.add(report)
+        else:
+            report.symbol = result.symbol
+            report.occurred_date = actual_date
+            report.abnormal_content = abnormal_content
+            if report.status == ABNORMAL_STATUS_CANCELLED:
+                report.status = ABNORMAL_STATUS_OPEN
 
     db.session.commit()
 
@@ -1126,6 +1259,14 @@ def ajax_update_result(result_id: int):
         "ok": True,
         "result": result.result or "empty",
         "note": result.abnormal_note or "",
+        "abnormal": selected_result in {RESULT_NG, RESULT_ABNORMAL},
+        "result_id": result.id,
+        "symbol": result.symbol,
+        "date": actual_date.isoformat(),
+        "date_label": actual_date.strftime("%d/%m/%Y"),
+        "content": result.content or "",
+        "status": result.abnormal_reports[0].status if result.abnormal_reports else ABNORMAL_STATUS_OPEN,
+        "abnormal_url": url_for("checklist.update_abnormal_result", result_id=result.id),
     })
 
 
@@ -1166,9 +1307,11 @@ def update_abnormal_result(result_id: int):
         return redirect_to_sheet(result.daily_sheet, "abnormal")
 
     countermeasure = request.form.get("countermeasure", "").strip()
+    actual_date = result_work_date(result.daily_sheet.line_name, result.daily_sheet.check_date, result.check_time)
+    result.check_date = actual_date
     confirm_date_before_fix = parse_date(
         request.form.get("confirm_date_before_fix"),
-        fallback=result.check_date,
+        fallback=actual_date,
     )
     result_after_fix = request.form.get("result_after_fix", "").strip()
     status = request.form.get("status", ABNORMAL_STATUS_OPEN).strip() or ABNORMAL_STATUS_OPEN
@@ -1188,7 +1331,7 @@ def update_abnormal_result(result_id: int):
             daily_check_result=result,
             user=result.user,
             symbol=result.symbol,
-            occurred_date=result.check_date,
+            occurred_date=actual_date,
             abnormal_content=abnormal_content,
             countermeasure=countermeasure,
             confirm_date_before_fix=confirm_date_before_fix,
@@ -1198,7 +1341,7 @@ def update_abnormal_result(result_id: int):
         db.session.add(report)
     else:
         report.symbol = result.symbol
-        report.occurred_date = result.check_date
+        report.occurred_date = actual_date
         report.abnormal_content = abnormal_content
         report.countermeasure = countermeasure
         report.confirm_date_before_fix = confirm_date_before_fix
@@ -1240,11 +1383,8 @@ def print_checklist(sheet_id: int):
         return redirect(url_for("checklist.dashboard"))
 
     current_lang = session.get("lang", "vi")
-    results = (
-        DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id)
-        .order_by(DailyCheckResult.check_time.asc(), DailyCheckResult.id.asc())
-        .all()
-    )
+    results = DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).all()
+    results = sorted(results, key=lambda result: line_time_sort_key(sheet.line_name, result.check_time, result.id))
     abnormal_reports = [
         report
         for report in sheet.abnormal_reports
@@ -1258,5 +1398,6 @@ def print_checklist(sheet_id: int):
         results=results,
         abnormal_reports=abnormal_reports,
         confirmations=confirmations,
+        result_work_date=result_work_date,
         current_lang=current_lang,
     )

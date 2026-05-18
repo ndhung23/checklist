@@ -18,8 +18,8 @@
         <div class="card h-100">
             <div class="card-header bg-white border-0 pb-0 d-flex align-items-center justify-content-between gap-2">
                 <h2 class="section-title mb-0">Daily Sheets</h2>
-                {% if current_user and current_user.role in ['manager', 'admin'] %}
-                    <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('admin.leader_assignments') }}" title="Gan staff vao leader">
+                {% if current_user and current_user.role in ['manager', 'admin', 'leader'] %}
+                    <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('admin.leader_assignments') }}" title="Gán Tổ phó vào Tổ trưởng">
                         <i class="bi bi-person-lines-fill"></i>
                     </a>
                 {% endif %}
@@ -90,7 +90,7 @@
                         {% if current_user and current_user.role == 'staff' and selected_sheet.user_id == current_user.id %}
                         <div class="d-flex gap-1 border-end pe-2">
                             <form method="post" action="{{ url_for('checklist.send_sheet_outlook', sheet_id=selected_sheet.id) }}" class="m-0 p-0">
-                                <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-envelope"></i> Gửi leader</button>
+                                <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-envelope"></i> Gửi Tổ trưởng</button>
                             </form>
                             {% if outlook_url %}
                                 <a class="btn btn-sm btn-outline-secondary" href="{{ outlook_url }}"><i class="bi bi-envelope-paper"></i> Mail app</a>
@@ -102,7 +102,16 @@
                 {% endif %}
             </div>
             <div class="card-body pt-3">
-            
+                {% if staff_must_choose_line %}
+                <div class="alert alert-warning no-print">
+                    Vui lòng chọn line trước khi điền checklist trong ngày.
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        {% for line in visible_lines %}
+                            <a class="btn btn-sm btn-primary" href="{{ url_for('checklist.dashboard', date=selected_date, line=line.line_name, keyword=keyword, result_filter=result_filter, period=period_type) }}">{{ line.line_name }}</a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
 
 
                 <form class="bg-light rounded p-3 mb-3 filter-panel no-print js-filter-submit" method="get">
@@ -204,7 +213,7 @@
                                 <th class="check-content">Content</th>
                                 <th>{{ t('result') }}</th>
                                 <th>Abnormal Note</th>
-                                <th>Leader Note</th>
+                                <th>Ghi chú Tổ trưởng</th>
                                 <th class="no-print">Action</th>
                             </tr>
                         </thead>
@@ -220,10 +229,18 @@
                                 {% endif %}
                                 <tr class="{{ row_class }}">
                                     <td>{{ loop.index }}</td>
-                                    <td>{{ result.check_time|time_local }}</td>
+                                    <td>
+                                        {% set actual_date = result_work_date(selected_sheet.line_name, selected_sheet.check_date, result.check_time) %}
+                                        {% if selected_sheet.line_name == 'Line D' %}
+                                            <div>{{ result.check_time|time_local }}</div>
+                                            <div class="small text-muted">{{ actual_date|date_local }}</div>
+                                        {% else %}
+                                            {{ result.check_time|time_local }}
+                                        {% endif %}
+                                    </td>
                                     <td>{{ result.symbol }}</td>
                                     <td class="check-content">{{ get_item_content(result.checklist_item, current_lang) }}</td>
-                                    <td>
+                                    <td data-result-cell>
                                         {% if result.result == 'o' %}
                                             <span class="badge badge-result-o">o</span>
                                         {% elif result.result == 'x' %}
@@ -245,25 +262,23 @@
                                         {% endif %}
                                     </td>
                                     <td class="no-print">
-                                        {% if current_user and (current_user.role == 'admin' or current_user.id == result.user_id) %}
+                                        {% if can_edit_selected %}
                                             <div class="result-action-group">
                                                 <button class="btn btn-sm btn-outline-success status-btn js-result-btn" type="button" data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}" data-result="o">o</button>
-                                                <button class="btn btn-sm btn-outline-danger status-btn abnormal-trigger" type="button"
-                                                    data-bs-toggle="modal" data-bs-target="#abnormalModal"
-                                                    data-action="{{ url_for('checklist.update_abnormal_result', result_id=result.id) }}"
+                                                <button class="btn btn-sm btn-outline-danger status-btn js-result-btn" type="button"
+                                                    data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}"
                                                     data-result="x" data-id="{{ result.id }}" data-symbol="{{ result.symbol }}"
-                                                    data-date="{{ result.check_date.isoformat() }}"
+                                                    data-date="{{ result_work_date(selected_sheet.line_name, selected_sheet.check_date, result.check_time).isoformat() }}"
                                                     data-content="{{ get_item_content(result.checklist_item, current_lang) }}"
                                                     data-note="{{ result.abnormal_note or '' }}"
                                                     data-countermeasure="{{ result.abnormal_reports[0].countermeasure if result.abnormal_reports else '' }}"
                                                     data-confirm-date="{{ result.abnormal_reports[0].confirm_date_before_fix.isoformat() if result.abnormal_reports and result.abnormal_reports[0].confirm_date_before_fix else '' }}"
                                                     data-result-after-fix="{{ result.abnormal_reports[0].result_after_fix if result.abnormal_reports else '' }}"
                                                     data-status="{{ result.abnormal_reports[0].status if result.abnormal_reports else 'open' }}">x</button>
-                                                <button class="btn btn-sm btn-outline-warning status-btn abnormal-trigger" type="button"
-                                                    data-bs-toggle="modal" data-bs-target="#abnormalModal"
-                                                    data-action="{{ url_for('checklist.update_abnormal_result', result_id=result.id) }}"
+                                                <button class="btn btn-sm btn-outline-warning status-btn js-result-btn" type="button"
+                                                    data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}"
                                                     data-result="△" data-id="{{ result.id }}" data-symbol="{{ result.symbol }}"
-                                                    data-date="{{ result.check_date.isoformat() }}"
+                                                    data-date="{{ result_work_date(selected_sheet.line_name, selected_sheet.check_date, result.check_time).isoformat() }}"
                                                     data-content="{{ get_item_content(result.checklist_item, current_lang) }}"
                                                     data-note="{{ result.abnormal_note or '' }}"
                                                     data-countermeasure="{{ result.abnormal_reports[0].countermeasure if result.abnormal_reports else '' }}"
@@ -330,9 +345,9 @@
                                 <th class="no-print">Action</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="abnormalReportsBody">
                             {% for report in abnormal_reports %}
-                                <tr class="{% if report.daily_check_result.result == 'x' %}row-result-x{% else %}row-result-triangle{% endif %}">
+                                <tr class="{% if report.daily_check_result.result == 'x' %}row-result-x{% else %}row-result-triangle{% endif %}" data-report-result-id="{{ report.daily_check_result_id }}">
                                     <td>{{ loop.index }}</td>
                                     <td>{{ report.symbol }}</td>
                                     <td>{{ report.occurred_date|date_local }}</td>
@@ -342,7 +357,7 @@
                                     <td>{{ report.result_after_fix or '-' }}</td>
                                     <td><span class="badge status-badge status-{{ report.status }}">{{ report.status }}</span></td>
                                     <td class="no-print">
-                                        {% if current_user and (current_user.role == 'admin' or current_user.id == report.user_id) %}
+                                        {% if can_edit_selected %}
                                             <button class="btn btn-sm btn-outline-primary abnormal-trigger" type="button"
                                                 data-bs-toggle="modal" data-bs-target="#abnormalModal"
                                                 data-action="{{ url_for('checklist.update_abnormal_result', result_id=report.daily_check_result_id) }}"
