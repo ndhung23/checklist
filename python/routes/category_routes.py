@@ -11,12 +11,9 @@ from routes.auth_routes import admin_required
 
 category_bp = Blueprint("category", __name__)
 
-LINE_TIME_OPTIONS = {
-    "Line A": ["06:00", "07:00", "08:00", "09:00", "11:00", "12:00", "13:00"],
-    "Line B": ["08:20", "09:20", "10:00", "11:00", "13:00", "15:00", "16:00"],
-    "Line C": ["14:00", "15:00", "16:00", "17:00", "19:00", "20:00", "21:00"],
-    "Line D": ["22:00", "23:00", "00:00", "01:00", "03:00", "04:00", "05:00"],
-}
+ALL_24H_OPTIONS = [f"{h:02d}:00" for h in range(24)]
+
+LINE_TIME_OPTIONS = {}
 
 
 def parse_check_time(value: str):
@@ -45,9 +42,9 @@ def categories():
     template = get_template()
     selected_line = get_line()
     lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
-    line_time_options_map = {line.line_name: LINE_TIME_OPTIONS.get(line.line_name, []) for line in lines}
+    line_time_options_map = {str(line.id): LINE_TIME_OPTIONS.get(line.line_name, ALL_24H_OPTIONS) for line in lines}
     if template is None or selected_line is None:
-        flash("Chưa có checklist template để quản lý hạng mục.", "warning")
+        flash("ChÆ°a cĂ³ checklist template Ä‘á»ƒ quáº£n lĂ½ háº¡ng má»¥c.", "warning")
         return render_template(
             "admin_categories.html",
             templates=[],
@@ -68,7 +65,7 @@ def categories():
         time_group = request.form.get("time_group", "").strip() or check_time
 
         if not symbol or not content or not check_time:
-            flash("Vui lòng nhập đầy đủ ký hiệu, hạng mục và giờ.", "danger")
+            flash("Vui lĂ²ng nháº­p Ä‘áº§y Ä‘á»§ kĂ½ hiá»‡u, háº¡ng má»¥c vĂ  giá».", "danger")
             return redirect(url_for("category.categories", template_id=template.id, line_id=selected_line.id))
 
         next_order = (
@@ -94,7 +91,7 @@ def categories():
             )
         )
         db.session.commit()
-        flash("Đã thêm hạng mục mới.", "success")
+        flash("ÄĂ£ thĂªm háº¡ng má»¥c má»›i.", "success")
         return redirect(url_for("category.categories", template_id=template.id, line_id=selected_line.id))
 
     keyword = request.args.get("q", "").strip()
@@ -122,7 +119,7 @@ def categories():
         lines=lines,
         selected_template=template,
         selected_line=selected_line,
-        line_time_options=LINE_TIME_OPTIONS.get(selected_line.line_name, []),
+        line_time_options=LINE_TIME_OPTIONS.get(selected_line.line_name, ALL_24H_OPTIONS),
         line_time_options_map=line_time_options_map,
         categories=categories,
         filters={"q": keyword, "status": status_filter},
@@ -134,16 +131,31 @@ def categories():
 @admin_required
 def update_category(category_id: int):
     category = ChecklistItem.query.get_or_404(category_id)
+    line_id = request.form.get("line_id", type=int)
+    selected_line = Line.query.filter_by(id=line_id, is_active=True).first() if line_id else category.line
     symbol = request.form.get("symbol", "").strip()
     content = request.form.get("content", "").strip()
     check_time = request.form.get("check_time", "").strip()
     time_group = request.form.get("time_group", "").strip() or check_time
 
     if not symbol or not content or not check_time:
-        flash("Vui lòng nhập đầy đủ dữ liệu khi cập nhật.", "danger")
+        flash("Vui lĂ²ng nháº­p Ä‘áº§y Ä‘á»§ dá»¯ liá»‡u khi cáº­p nháº­t.", "danger")
+        return redirect(url_for("category.categories", template_id=category.template_id, line_id=category.line_id))
+
+    if selected_line is None:
+        flash("Vui lĂ²ng chá»n line há»£p lá»‡.", "danger")
         return redirect(url_for("category.categories", template_id=category.template_id, line_id=category.line_id))
 
     parsed_time = parse_check_time(check_time)
+    if category.line_id != selected_line.id:
+        next_order = (
+            db.session.query(func.max(ChecklistItem.item_order))
+            .filter(ChecklistItem.template_id == category.template_id, ChecklistItem.line_id == selected_line.id)
+            .scalar()
+            or 0
+        ) + 1
+        category.item_order = next_order
+    category.line = selected_line
     category.symbol = symbol
     category.category_type = symbol
     category.content = content
@@ -161,8 +173,8 @@ def update_category(category_id: int):
         result.content = content
 
     db.session.commit()
-    flash("Đã cập nhật hạng mục.", "success")
-    return redirect(url_for("category.categories", template_id=category.template_id, line_id=category.line_id))
+    flash("ÄĂ£ cáº­p nháº­t háº¡ng má»¥c.", "success")
+    return redirect(url_for("category.categories", template_id=category.template_id, line_id=selected_line.id))
 
 
 @category_bp.route("/categories/<int:category_id>/delete", methods=["POST"])
@@ -173,12 +185,13 @@ def delete_category(category_id: int):
     if in_use:
         category.is_active = False
         db.session.commit()
-        flash("Hạng mục đã có dữ liệu checklist nên hệ thống đã chuyển sang inactive.", "warning")
+        flash("Háº¡ng má»¥c Ä‘Ă£ cĂ³ dá»¯ liá»‡u checklist nĂªn há»‡ thá»‘ng Ä‘Ă£ chuyá»ƒn sang inactive.", "warning")
         return redirect(url_for("category.categories", template_id=category.template_id, line_id=category.line_id))
 
     template_id = category.template_id
     line_id = category.line_id
     db.session.delete(category)
     db.session.commit()
-    flash("Đã xóa hạng mục.", "success")
+    flash("ÄĂ£ xĂ³a háº¡ng má»¥c.", "success")
     return redirect(url_for("category.categories", template_id=template_id, line_id=line_id))
+

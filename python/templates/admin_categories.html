@@ -5,30 +5,39 @@
 {% macro category_form(category=None) %}
 <form method="post" action="{{ url_for('category.update_category', category_id=category.id) if category else url_for('category.categories') }}" class="row g-3">
     {% if selected_template %}<input type="hidden" name="template_id" value="{{ selected_template.id }}">{% endif %}
-    {% if selected_line %}<input type="hidden" name="line_id" value="{{ selected_line.id }}">{% endif %}
-    <div class="col-12 col-md-2">
-        <label class="form-label">Ký hiệu</label>
-        <input type="text" name="symbol" class="form-control" value="{{ category.symbol if category else '' }}" required>
+    <div class="col-12 col-md-3">
+        <label class="form-label">Line</label>
+        <select name="line_id" class="form-select js-category-line-select" required>
+            {% for line in lines %}
+                {% set current_line_id = category.line_id if category else (selected_line.id if selected_line else none) %}
+                <option value="{{ line.id }}" {% if current_line_id == line.id %}selected{% endif %}>{{ line.line_name }} - {{ line.department }}</option>
+            {% endfor %}
+        </select>
     </div>
     <div class="col-12 col-md-2">
         <label class="form-label">Giờ line</label>
-        <select name="check_time" class="form-select" required>
+        <select name="check_time" class="form-select js-category-time-select" required>
             {% set selected_time = category.check_time|time_local if category else '' %}
-            {% for time_value in line_time_options %}
+            {% set active_line_id = (category.line_id|string) if category else ((selected_line.id|string) if selected_line else '') %}
+            {% for time_value in line_time_options_map.get(active_line_id, line_time_options) %}
                 <option value="{{ time_value }}" {% if selected_time == time_value %}selected{% endif %}>{{ time_value }}</option>
             {% endfor %}
-            {% if selected_time and selected_time not in line_time_options %}
+            {% if selected_time and selected_time not in line_time_options_map.get(active_line_id, line_time_options) %}
                 <option value="{{ selected_time }}" selected>{{ selected_time }}</option>
             {% endif %}
         </select>
     </div>
-    <div class="col-12 col-md-3">
-        <label class="form-label">Nhóm giờ</label>
-        <input type="text" name="time_group" class="form-control" value="{{ category.time_group if category else '' }}" placeholder="08:00 hoặc Cuối ca">
+    <div class="col-12 col-md-2">
+        <label class="form-label">Ký hiệu</label>
+        <input type="text" name="symbol" class="form-control" value="{{ category.symbol if category else '' }}" required>
     </div>
     <div class="col-12 col-md-4">
         <label class="form-label">Hạng mục</label>
         <input type="text" name="content" class="form-control" value="{{ category.content_vi if category else '' }}" required>
+    </div>
+    <div class="col-12 col-md-3">
+        <label class="form-label">Nhóm giờ</label>
+        <input type="text" name="time_group" class="form-control" value="{{ category.time_group if category else '' }}" placeholder="08:00 hoặc Cuối ca">
     </div>
     {% if category %}
     <div class="col-12 col-md-1">
@@ -169,4 +178,36 @@
     </div>
 </div>
 {% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const lineTimeOptionsMap = {{ line_time_options_map|tojson }};
+  const ALL_24H = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0') + ':00');
+
+  document.querySelectorAll(".js-category-line-select").forEach((lineSelect) => {
+    const form = lineSelect.closest("form");
+    const timeSelect = form ? form.querySelector(".js-category-time-select") : null;
+    if (!form || !timeSelect) return;
+
+    const renderTimes = () => {
+      const options = lineTimeOptionsMap[lineSelect.value] || ALL_24H;
+      const currentValue = timeSelect.value;
+      timeSelect.innerHTML = "";
+      options.forEach((timeValue) => {
+        const option = document.createElement("option");
+        option.value = timeValue;
+        option.textContent = timeValue;
+        if (timeValue === currentValue) option.selected = true;
+        timeSelect.appendChild(option);
+      });
+      if (!timeSelect.value && options.length) {
+        timeSelect.value = options[0];
+      }
+    };
+
+    lineSelect.addEventListener("change", renderTimes);
+    renderTimes();
+  });
+</script>
 {% endblock %}
