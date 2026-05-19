@@ -137,10 +137,10 @@
                                     <input type="hidden" name="next" value="{{ url_for('admin.leader_assignments', q=filters.q, status=filters.status, gender=filters.gender, page=pagination.page) }}">
                                     <button class="btn btn-sm btn-outline-warning" type="submit" title="Block"><i class="bi bi-slash-circle"></i></button>
                                 </form>
-                                <form method="post" action="{{ url_for('admin.delete_user', user_id=staff.id) }}" onsubmit="return confirm('Xóa tài khoản này?');">
+                                <!-- <form method="post" action="{{ url_for('admin.delete_user', user_id=staff.id) }}" onsubmit="return confirm('Xóa tài khoản này?');">
                                     <input type="hidden" name="next" value="{{ url_for('admin.leader_assignments', q=filters.q, status=filters.status, gender=filters.gender, page=pagination.page) }}">
                                     <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete"><i class="bi bi-trash"></i></button>
-                                </form>
+                                </form> -->
                             </div>
                         </td>
                     </tr>

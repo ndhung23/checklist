@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>In tháng - {{ user.full_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+  <style>
+    body {
+      background: #fff;
+      color: #111827;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 11px;
+    }
+
+    .print-page {
+      padding: 14px 18px;
+    }
+
+    .print-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .print-title h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 3px;
+    }
+
+    .note-box {
+      border: 1px solid #f59e0b;
+      background: #fffbeb;
+      border-radius: 6px;
+      padding: 7px 10px;
+      height: 100%;
+      margin-bottom: 10px;
+    }
+
+    .sheet-meta {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+
+    .sheet-info-box {
+      height: 100%;
+      padding: 3px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .month-table {
+      table-layout: fixed;
+      font-size: 9px;
+    }
+
+    th,
+    td {
+      border: 1px solid #94a3b8;
+      padding: 3px 4px;
+      vertical-align: middle;
+    }
+
+    th {
+      background: #dbeafe;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .col-time {
+      width: 54px;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .col-symbol {
+      width: 28px;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .col-content {
+      width: 44%;
+      line-height: 1.25;
+    }
+
+    .day-col {
+      width: 22px;
+      text-align: center;
+      padding: 2px;
+      font-weight: 700;
+    }
+
+    .cell-o { background: #dcfce7; color: #166534; }
+    .cell-x { background: #fee2e2; color: #991b1b; }
+    .cell-tri { background: #fef3c7; color: #92400e; }
+    .signature-row td { background: #f8fafc; font-weight: 700; }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 14px 0 7px;
+    }
+
+    .abnormal-table {
+      font-size: 10px;
+      page-break-inside: auto;
+    }
+
+    .abnormal-table th:nth-child(1) { width: 58px; }
+    .abnormal-table th:nth-child(2) { width: 92px; }
+    .abnormal-table th:nth-child(4) { width: 20%; }
+    .abnormal-table th:nth-child(5) { width: 110px; }
+    .abnormal-table th:nth-child(6) { width: 18%; }
+
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
+
+    @media print {
+      .no-print { display: none !important; }
+      body { margin: 0; }
+      .print-page { padding: 0; }
+      tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="print-page">
+  <div class="print-toolbar no-print">
+    <div class="print-title">
+      <!-- <h1>Checksheet tháng {{ "%02d"|format(excel_context.excel_month) }}/{{ excel_context.excel_year }}</h1> -->
+      <!-- <div class="text-muted">{{ user.full_name }}{% if excel_context.line_name %} | {{ excel_context.line_name }}{% endif %}</div> -->
+    </div>
+    <button class="btn btn-primary btn-sm" type="button" onclick="window.print()">In tháng</button>
+  </div>
+
+  <div class="print-title">
+    <h1>Checksheet tuần tra nhà máy tháng {{ "%02d"|format(excel_context.excel_month) }}</h1>
+  </div>
+  <div class="row g-3 align-items-stretch mb-2">
+    <div class="col-6">
+      <div class="sheet-info-box">
+        <div class="sheet-meta">
+          <span><strong>Người thực hiện:</strong> {{ excel_context.month_user_names|join(', ') if excel_context.month_user_names else user.full_name }}</span>
+          <span><strong>Mã NV:</strong> {% if excel_context.month_user_codes|length == 1 %}{{ excel_context.month_user_codes[0] }}{% else %}Nhiều người{% endif %}</span>
+          <span><strong>Line:</strong> {{ excel_context.line_name or user.line_name }}</span>
+          <span><strong>Tháng:</strong> {{ excel_context.excel_month }}/{{ excel_context.excel_year }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6">
+      <div class="note-box">
+        <strong>Chú ý:</strong> Kết quả tốt ghi <strong>o</strong>, không tốt ghi <strong>x</strong>.
+        Trường hợp <strong>x</strong> ghi số trong ký hiệu △ và ghi lịch sử xử lý bên dưới.
+        <span class="text-muted d-block mt-1">Dùng cho SL/TL quản lý 1 ca</span>
+      </div>
+    </div>
+  </div>
+
+  <table class="month-table">
+    <thead>
+      <tr>
+        <th rowspan="2" class="col-time">Thời gian</th>
+        <th rowspan="2" class="col-symbol"></th>
+        <th rowspan="2" class="col-content">Hạng mục check</th>
+        <th colspan="{{ excel_context.days_in_month }}">Cột ghi ngày và kết quả kiểm tra</th>
+      </tr>
+      <tr>
+        {% for day in range(1, excel_context.days_in_month + 1) %}
+        <th class="day-col">{{ day }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if excel_context.excel_groups %}
+        {% for group in excel_context.excel_groups %}
+          {% set row_count = group.rows | length %}
+          {% for item in group.rows %}
+          <tr>
+            {% if loop.first %}
+            <td class="col-time" rowspan="{{ row_count }}">
+              {% for t in group.time_group.split('\n') %}
+                <div>{{ t }}</div>
+              {% endfor %}
+            </td>
+            {% endif %}
+            <td class="col-symbol">{{ item.category_type }}</td>
+            <td class="col-content">{{ item.content }}</td>
+            {% for day in range(1, excel_context.days_in_month + 1) %}
+              {% set val = item.days[day] if day in item.days else '' %}
+              <td class="day-col {% if val == 'o' %}cell-o{% elif val == 'x' %}cell-x{% elif val == '△' %}cell-tri{% endif %}">
+                {{ val }}
+              </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="{{ excel_context.days_in_month + 3 }}" class="text-center text-muted py-3">Không có dữ liệu checksheet trong tháng này.</td>
+        </tr>
+      {% endif %}
+      {% for sig in excel_context.signature_rows %}
+      <tr class="signature-row">
+        <td colspan="3" class="text-center">{{ sig.label }}</td>
+        {% for day in range(1, excel_context.days_in_month + 1) %}
+        {% set sig_val = sig.days[day] if day in sig.days else '' %}
+        <td class="day-col {% if sig_val %}cell-o{% endif %}">{{ sig_val }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2 class="section-title">Nội dung lỗi và lịch sử xử lý</h2>
+  <table class="abnormal-table">
+    <thead>
+      <tr>
+        <th>Ký hiệu</th>
+        <th>Ngày tháng phát sinh</th>
+        <th>Nội dung bất thường</th>
+        <th>Đối sách xử lý</th>
+        <th>Ngày xác nhận sau khi xử lý</th>
+        <th>Kết quả xác nhận sau khi xử lý</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for report in excel_context.excel_abnormal_reports %}
+      <tr>
+        <td>{{ report.symbol }}</td>
+        <td>{{ report.occurred_date|date_local }}</td>
+        <td>{{ report.abnormal_content }}</td>
+        <td>{{ report.countermeasure or '-' }}</td>
+        <td>{{ report.confirm_date_before_fix|date_local if report.confirm_date_before_fix else '-' }}</td>
+        <td>{{ report.result_after_fix or '-' }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="text-center text-muted py-3">Không có lỗi trong tháng này.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if auto_print %}
+<script>
+  window.addEventListener("load", () => window.print());
+</script>
+{% endif %}
+</body>
+</html>

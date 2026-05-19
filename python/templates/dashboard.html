@@ -5,16 +5,16 @@
 {% block content %}
 
 {% if current_user and current_user.role == 'admin' %}
-<div class="admin-shell row g-4">
+<div class="admin-shell dashboard-shell row g-3">
     <div class="admin-sidebar-col col-12 col-lg-1 no-print">
         {% include "partials/sidebar.html" %}
     </div>
     <div class="admin-content-col col-12 col-lg-11">
 {% endif %}
 
-<div class="row g-4">
+<div class="dashboard-grid row g-3 {% if current_user and current_user.role == 'staff' %}dashboard-grid-staff{% endif %}">
     {% if not current_user or current_user.role != 'staff' %}
-    <div class="col-12 col-xxl-2">
+    <div class="daily-sheets-panel col-12 col-xxl-2">
         <div class="card h-100">
             <div class="card-header bg-white border-0 pb-0 d-flex align-items-center justify-content-between gap-2">
                 <h2 class="section-title mb-0">Daily Sheets</h2>
@@ -26,11 +26,11 @@
             </div>
             <div class="card-body pt-3">
                 <div class="table-responsive">
-                    <table class="table table-checklist table-sm mb-0">
+                    <table class="table table-checklist table-sm mb-0 daily-sheets-table">
                         <thead>
                             <tr>
-                                <th>STT</th>
-                                <th>User</th>
+                                <th>ID</th>
+                                <th class="w-50">User</th>
                                 <th>Line</th>
                                 <th>Status</th>
                             </tr>
@@ -41,11 +41,22 @@
                                     <td>{{ loop.index }}</td>
                                     <td data-result-cell>
                                         <a class="fw-semibold text-decoration-none" href="{{ url_for('checklist.dashboard', date=selected_date, line=selected_line, user_id=selected_user_id, keyword=keyword, result_filter=result_filter, sheet_id=sheet.id, section=active_section) }}">
-                                            {{ sheet.user.full_name }}
+                                            <span class="daily-user-name">{{ sheet.user.full_name if sheet.user.full_name else sheet.user.full_name }}</span>
                                         </a>
                                     </td>
-                                    <td>{{ sheet.line_name }}</td>
-                                    <td><span class="badge sheet-status-badge sheet-status-{{ sheet.status }}">{{ sheet.status }}</span></td>
+                                    <td class="daily-line-cell">
+                                        {{ sheet.line_name.split()[-1] if sheet.line_name else sheet.line_name }}
+                                    </td>
+                                    <td>
+                                        {% set status_label = {
+                                            'draft': 'Nháp',
+                                            'checking': 'Đang kiểm tra',
+                                            'submitted': 'Đã nộp',
+                                            'confirmed': 'Đã xác nhận',
+                                            'rejected': 'Từ chối'
+                                        }.get(sheet.status, sheet.status) %}
+                                        <span class="badge sheet-status-badge sheet-status-{{ sheet.status }}">{{ status_label }}</span>
+                                    </td>
                                 </tr>
                             {% else %}
                                 <tr>
@@ -60,7 +71,7 @@
     </div>
     {% endif %}
 
-    <div class="col-12 {% if current_user and current_user.role == 'staff' %}col-xxl-12{% else %}col-xxl-10{% endif %}">
+    <div class="dashboard-main-panel col-12 {% if current_user and current_user.role == 'staff' %}col-xxl-12{% else %}col-xxl-10{% endif %}">
         <div class="card mb-4">
             <div class="card-header bg-white border-0 pb-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                 <div>
@@ -204,7 +215,7 @@
                 </div>
 
                 <div class="table-responsive table-sticky">
-                    <table class="table table-checklist align-middle mb-0">
+                    <table class="table table-checklist align-middle mb-0 checklist-results-table">
                         <thead>
                             <tr>
                                 <th>ID</th>

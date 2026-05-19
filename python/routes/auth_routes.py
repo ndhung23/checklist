@@ -6,7 +6,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, sessi
 
 from sqlalchemy import or_
 
-from models import User
+from models import Line, User
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -118,7 +118,7 @@ def _profile_month_options(today):
     return options
 
 
-def build_excel_month_context(user, year: int, month: int):
+def build_excel_month_context(user, year: int, month: int, line_name: str | None = None):
     from calendar import monthrange
     from datetime import date
 
@@ -135,21 +135,82 @@ def build_excel_month_context(user, year: int, month: int):
     month_start = date(year, month, 1)
     month_end = date(year, month, days_in_month)
 
+    selected_line_name = (line_name or "").strip() or None
+    if selected_line_name:
+        accessible_lines = {row.line_name for row in Line.query.filter_by(is_active=True).all()}
+        if user.role not in {"admin", "manager", "leader"} and selected_line_name != user.line_name:
+            selected_line_name = user.line_name
+        elif selected_line_name not in accessible_lines:
+            selected_line_name = user.line_name
+
     month_sheets = (
         DailyCheckSheet.query.filter(
-            DailyCheckSheet.user_id == user.id,
             DailyCheckSheet.check_date >= month_start,
             DailyCheckSheet.check_date <= month_end,
         )
         .order_by(DailyCheckSheet.check_date.asc(), DailyCheckSheet.id.asc())
         .all()
     )
+    if user.role == "leader":
+        month_sheets = [
+            sheet
+            for sheet in month_sheets
+            if sheet.user and sheet.user.role == "staff" and sheet.user.leader_id == user.id
+        ]
+    elif user.role not in {"admin", "manager"}:
+        month_sheets = [sheet for sheet in month_sheets if sheet.user_id == user.id]
+    if selected_line_name:
+        month_sheets = [sheet for sheet in month_sheets if sheet.line_name == selected_line_name]
+
     latest_month_sheet = month_sheets[-1] if month_sheets else None
-    latest_sheet = latest_month_sheet or (
-        DailyCheckSheet.query.filter_by(user_id=user.id)
-        .order_by(DailyCheckSheet.check_date.desc(), DailyCheckSheet.id.desc())
-        .first()
-    )
+    if latest_month_sheet:
+        latest_sheet = latest_month_sheet
+    elif selected_line_name and user.role == "leader":
+        latest_sheet = (
+            DailyCheckSheet.query.join(User)
+            .filter(
+                DailyCheckSheet.line_name == selected_line_name,
+                DailyCheckSheet.check_date >= month_start,
+                DailyCheckSheet.check_date <= month_end,
+                User.role == "staff",
+                User.leader_id == user.id,
+            )
+            .order_by(DailyCheckSheet.check_date.desc(), DailyCheckSheet.id.desc())
+            .first()
+        )
+    elif selected_line_name and user.role in {"admin", "manager"}:
+        latest_sheet = (
+            DailyCheckSheet.query.filter_by(line_name=selected_line_name)
+            .order_by(DailyCheckSheet.check_date.desc(), DailyCheckSheet.id.desc())
+            .first()
+        )
+    elif user.role == "leader":
+        latest_sheet = (
+            DailyCheckSheet.query.join(User)
+            .filter(
+                DailyCheckSheet.check_date >= month_start,
+                DailyCheckSheet.check_date <= month_end,
+                User.role == "staff",
+                User.leader_id == user.id,
+            )
+            .order_by(DailyCheckSheet.check_date.desc(), DailyCheckSheet.id.desc())
+            .first()
+        )
+    else:
+        latest_sheet = (
+            DailyCheckSheet.query.filter_by(user_id=user.id)
+            .order_by(DailyCheckSheet.check_date.desc(), DailyCheckSheet.id.desc())
+            .first()
+        )
+    month_user_names = []
+    month_user_codes = []
+    seen_user_ids = set()
+    for sheet in month_sheets:
+        if sheet.user_id in seen_user_ids or not sheet.user:
+            continue
+        seen_user_ids.add(sheet.user_id)
+        month_user_names.append(sheet.user.full_name)
+        month_user_codes.append(sheet.user.employee_code)
     if not latest_sheet:
         return {
             "days_in_month": days_in_month,
@@ -161,11 +222,14 @@ def build_excel_month_context(user, year: int, month: int):
             "latest_sheet_id": None,
             "sheet_id_by_day": {},
             "status_by_day": {},
-            "line_name": getattr(user, "line_name", None),
+            "line_name": selected_line_name or getattr(user, "line_name", None),
+            "month_user_names": month_user_names,
+            "month_user_codes": month_user_codes,
         }
 
-    active_line_name = latest_sheet.line_name or getattr(user, "line_name", None)
-    month_sheets = [sheet for sheet in month_sheets if sheet.line_name == active_line_name]
+    active_line_name = selected_line_name or latest_sheet.line_name or getattr(user, "line_name", None)
+    if active_line_name:
+        month_sheets = [sheet for sheet in month_sheets if sheet.line_name == active_line_name]
 
     item_query = ChecklistItem.query.filter_by(
         template_id=latest_sheet.template_id,
@@ -268,6 +332,8 @@ def build_excel_month_context(user, year: int, month: int):
         "sheet_id_by_day": sheet_id_by_day,
         "status_by_day": status_by_day,
         "line_name": active_line_name,
+        "month_user_names": month_user_names,
+        "month_user_codes": month_user_codes,
     }
 
 
@@ -337,6 +403,7 @@ def profile():
         view_mode = "excel"
 
     raw_excel_month = request.args.get("excel_month", "").strip()
+    raw_excel_line = request.args.get("excel_line", "").strip()
     excel_year = today.year
     excel_month_num = today.month
     if raw_excel_month:
@@ -352,7 +419,24 @@ def profile():
         view_mode = "excel"
 
     month_options = _profile_month_options(today)
-    excel_context = build_excel_month_context(user, excel_year, excel_month_num)
+    excel_line_options = []
+    if user.role in {"admin", "manager", "leader"}:
+        excel_line_options = (
+            Line.query.filter_by(is_active=True)
+            .order_by(Line.line_name.asc())
+            .all()
+        )
+        if not raw_excel_line:
+            raw_excel_line = user.line_name if user.line_name else (excel_line_options[0].line_name if excel_line_options else "")
+    elif user.line_name:
+        raw_excel_line = user.line_name
+
+    excel_context = build_excel_month_context(
+        user,
+        excel_year,
+        excel_month_num,
+        raw_excel_line or None,
+    )
 
     # ── Lấy tất cả hạng mục (category_type) của user ─────────────────────────
     # Lấy các category_type duy nhất từ checklist items
@@ -485,6 +569,43 @@ def profile():
         else:
             wk["rate"] = None
 
+    weekly_total = {
+        "month_label": "Tổng",
+        "week_label": "",
+        "by_category": {},
+        "category_counts": {},
+        "ng_count": 0,
+        "fixed_count": 0,
+        "total_ok": 0,
+        "total_all": 0,
+        "rate": None,
+    }
+    if weekly_rows:
+        category_values: dict[str, list[str]] = {cat: [] for cat in all_category_types}
+        for wk in weekly_rows:
+            weekly_total["ng_count"] += wk["ng_count"]
+            weekly_total["fixed_count"] += wk["fixed_count"]
+            weekly_total["total_ok"] += wk["total_ok"]
+            weekly_total["total_all"] += wk["total_all"]
+            for cat in all_category_types:
+                val = wk["by_category"].get(cat, "-")
+                if val != "-":
+                    category_values[cat].append(val)
+                    weekly_total["category_counts"][cat] = weekly_total["category_counts"].get(cat, 0) + 1
+
+        for cat, vals in category_values.items():
+            if any(v == "x" for v in vals):
+                weekly_total["by_category"][cat] = "x"
+            elif any(v == "△" for v in vals):
+                weekly_total["by_category"][cat] = "△"
+            elif any(v == "o" for v in vals):
+                weekly_total["by_category"][cat] = "o"
+            else:
+                weekly_total["by_category"][cat] = "-"
+
+        if weekly_total["total_all"] > 0:
+            weekly_total["rate"] = round((weekly_total["total_ok"] / weekly_total["total_all"]) * 100)
+
     # Tên tháng viết tắt
     MONTH_ABBR = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"May",6:"Jun",7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
     for wk in weekly_rows:
@@ -499,12 +620,15 @@ def profile():
         date_to=date_to.isoformat(),
         report_rows=report_rows,
         weekly_rows=weekly_rows,
+        weekly_total=weekly_total,
         all_category_types=all_category_types,
         show_pw_modal=show_pw_modal,
         view_mode=view_mode,
         excel_month=raw_excel_month or f"{excel_year:04d}-{excel_month_num:02d}",
         month_options=month_options,
         excel_context=excel_context,
+        excel_line=raw_excel_line,
+        excel_line_options=excel_line_options,
     )
 
 
@@ -634,4 +758,33 @@ def print_profile_report():
         report_rows=report_rows,
         weekly_rows=weekly_rows,
         all_category_types=all_category_types,
+    )
+
+
+@auth_bp.route("/profile/print-month")
+@login_required
+def print_profile_month():
+    from datetime import date
+    from datetime import datetime as _dt
+
+    user = get_current_user()
+    today = date.today()
+    raw_excel_month = request.args.get("excel_month", "").strip()
+    raw_excel_line = request.args.get("excel_line", "").strip()
+    excel_year = today.year
+    excel_month_num = today.month
+    if raw_excel_month:
+        try:
+            parsed = _dt.strptime(raw_excel_month, "%Y-%m")
+            excel_year, excel_month_num = parsed.year, parsed.month
+        except ValueError:
+            pass
+
+    excel_context = build_excel_month_context(user, excel_year, excel_month_num, raw_excel_line or None)
+
+    return render_template(
+        "print_profile_month.html",
+        user=user,
+        excel_context=excel_context,
+        auto_print=request.args.get("autoprint") == "1",
     )

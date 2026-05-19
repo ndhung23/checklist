@@ -1,13 +1,13 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}Hồ sơ cá nhân{% endblock %}
 
 {% block content %}
 {# ================================================================
-   LAYOUT: 2 cột — Left (thông tin + bộ lọc) | Right (bảng báo cáo)
+   LAYOUT: 2 cá»™t — Left (thĂ´ng tin + bá»™ lá»c) | Right (báº£ng bĂ¡o cĂ¡o)
    ================================================================ #}
 <div class="profile-layout">
 
-  {# ── LEFT PANEL ─────────────────────────────────────────────── #}
+  {# â”€â”€ LEFT PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
   <aside class="profile-left">
 
     {# Thông tin cá nhân #}
@@ -45,7 +45,7 @@
       </div>
     </div>
 
-    {# Bộ lọc báo cáo #}
+    {# Bá»™ lá»c bĂ¡o cĂ¡o #}
     <div class="card profile-filter-card">
       <div class="card-header bg-white border-0 pb-0">
         <h2 class="section-title mb-0">🔍 Bộ lọc báo cáo</h2>
@@ -78,6 +78,9 @@
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Xem dạng Excel (theo tháng)</label>
+            {% if excel_line %}
+            <input type="hidden" name="excel_line" value="{{ excel_line }}">
+            {% endif %}
             <select class="form-select" name="excel_month" id="filter-excel-month">
               <option value="">— Chọn tháng —</option>
               {% for opt in month_options %}
@@ -95,10 +98,10 @@
 
   </aside>
 
-  {# ── RIGHT PANEL ─────────────────────────────────────────────── #}
+  {# â”€â”€ RIGHT PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
   <main class="profile-right">
 
-    {# Tiêu đề + nút chọn cột #}
+    {# TiĂªu Ä‘á» + nĂºt chá»n cá»™t #}
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
       <div>
         <h2 class="section-title mb-0" id="report-title">
@@ -128,24 +131,29 @@
         </a>
       </div>
 
-      {# Nút cho chế độ Excel #}
+      {# NĂºt cho cháº¿ Ä‘á»™ Excel #}
       <div class="d-flex gap-2" id="excel-header-actions" {% if view_mode != 'excel' %}style="display:none;"{% endif %}>
         {% if excel_context and excel_context.latest_sheet_id %}
-        <button class="btn btn-sm btn-outline-dark" id="btn-print-excel-header" type="button">
+        <a class="btn btn-sm btn-outline-dark" id="btn-print-month-header"
+           href="{{ url_for('auth.print_profile_month', excel_month=excel_month, excel_line=excel_line, autoprint=1) }}"
+           target="_blank">
+          🖨 In tháng
+        </a>
+        <!-- <button class="btn btn-sm btn-outline-dark" id="btn-print-excel-header" type="button">
           🖨 In checksheet
-        </button>
+        </button> -->
         <a class="btn btn-sm btn-outline-primary" id="btn-outlook-excel"
            href="#" onclick="sendOutlookExcel(event)">
           📧 Gửi Outlook
         </a>
         {% endif %}
-        <button class="btn btn-sm btn-outline-secondary" id="btn-switch-to-report" type="button">
+        <!-- <button class="btn btn-sm btn-outline-secondary" id="btn-switch-to-report" type="button">
           📊 Xem báo cáo tuần
-        </button>
+        </button> -->
       </div>
     </div>
 
-    {# ── BẢNG TUẦN ── #}
+    {# â”€â”€ Báº¢NG TUáº¦N â”€â”€ #}
     <div id="view-weekly" class="card mb-4" {% if view_mode != 'report' %}style="display:none;"{% endif %}>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -197,6 +205,31 @@
                   </td>
                 </tr>
                 {% endfor %}
+                <tr class="table-light fw-semibold">
+                  <td class="col-sticky">Tổng</td>
+                  <td class="col-sticky">-</td>
+                  {% for cat in all_category_types %}
+                  <td class="col-cat text-center" data-col="{{ cat }}">
+                    {{ weekly_total.category_counts[cat] if cat in weekly_total.category_counts else 0 }}
+                  </td>
+                  {% endfor %}
+                  <td class="text-center" data-col="ng_count">
+                    <span class="fw-bold text-danger">{{ weekly_total.ng_count }}</span>
+                  </td>
+                  <td class="text-center" data-col="fixed_count">
+                    <span class="fw-bold text-success">{{ weekly_total.fixed_count }}</span>
+                  </td>
+                  <td class="text-center" data-col="audit">
+                    <span class="fw-bold">{{ weekly_total.total_all }}</span>
+                  </td>
+                  <td class="text-center" data-col="rate">
+                    {% if weekly_total.rate is not none %}
+                      <span class="rate-badge {% if weekly_total.rate >= 95 %}rate-good{% elif weekly_total.rate >= 80 %}rate-warn{% else %}rate-bad{% endif %}">
+                        {{ weekly_total.rate }}%
+                      </span>
+                    {% else %}—{% endif %}
+                  </td>
+                </tr>
               {% else %}
                 <tr>
                   <td colspan="{{ all_category_types|length + 6 }}" class="text-center text-muted py-4">
@@ -210,7 +243,7 @@
       </div>
     </div>
 
-    {# ── BẢNG NGÀY (ẩn mặc định) ── #}
+    {# â”€â”€ Báº¢NG NGĂ€Y (áº©n máº·c Ä‘á»‹nh) â”€â”€ #}
     <div id="view-daily" class="card mb-4" {% if view_mode != 'daily' %}style="display:none;"{% endif %}>
       <div class="card-body p-0">
         <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
@@ -281,33 +314,51 @@
     <div id="view-excel" class="card mb-4" {% if view_mode != 'excel' %}style="display:none;"{% endif %}>
       {% if excel_context %}
       <div class="card-body">
-        <div class="excel-sheet-header mb-3">
-          <div style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start;">
-            <div>
-              <div class="excel-meta-grid">
-                <div><strong>Họ và tên SL/TL:</strong> {{ user.full_name }}</div>
-                <div><strong>Mã NV:</strong> {{ user.employee_code }}</div>
+        <div class="mb-3">
+          {% if user.role in ['admin', 'manager', 'leader'] and excel_line_options %}
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            {% for line in excel_line_options %}
+              <a class="btn btn-sm {% if excel_context and excel_context.line_name == line.line_name %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                 href="{{ url_for('auth.profile', view='excel', date_from=date_from, date_to=date_to, excel_month=excel_month, excel_line=line.line_name) }}">
+                {{ line.line_name }}
+              </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <!-- <div class="d-flex flex-wrap gap-2 mb-3 justify-content-end">
+            <a class="btn btn-sm btn-outline-dark" id="btn-print-month"
+               href="{{ url_for('auth.print_profile_month', excel_month=excel_month, excel_line=excel_line, autoprint=1) }}"
+               target="_blank">
+              🖨 In tháng
+            </a>
+            <button class="btn btn-sm btn-outline-secondary" id="btn-print-excel" type="button" title="In bảng checksheet tháng hiện tại">
+              🖨ï¸ In checksheet
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="btn-email-excel" type="button" title="Gửi bảng checksheet qua Outlook">
+              📧 Gửi Outlook
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="btn-view-week-report" type="button" title="Xem báo cáo tổng hợp theo tuần">
+              📊 Xem báo cáo tuần
+            </button>
+          </div> -->
+
+          <div class="row g-3 align-items-stretch">
+            <div class="col-12 col-lg-6">
+              <div class="excel-meta-grid h-100">
+                <div><strong>Người thực hiện:</strong> {{ excel_context.month_user_names|join(', ') if excel_context.month_user_names else user.full_name }}</div>
+                <div><strong>Mã NV:</strong> {% if excel_context.month_user_codes|length == 1 %}{{ excel_context.month_user_codes[0] }}{% else %}Nhiều người{% endif %}</div>
                 {% if user.role == 'staff' %}
                 <div><strong>Line:</strong> {{ excel_context.line_name or user.line_name }}</div>
                 {% endif %}
                 <div><strong>Tháng:</strong> {{ excel_context.excel_month }}/{{ excel_context.excel_year }}</div>
               </div>
-              <div class="excel-note-box">
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="excel-note-box h-100">
                 <strong>Chú ý:</strong> Kết quả tốt ghi <strong>o</strong>, không tốt ghi <strong>x</strong>.
                 Trường hợp <strong>x</strong> ghi số trong ký hiệu △ và ghi lịch sử xử lý bên dưới.
                 <span class="text-muted d-block mt-1">Dùng cho SL/TL quản lý 1 ca</span>
               </div>
-            </div>
-            <div class="d-flex flex-column gap-2" style="min-width: 200px;">
-              <button class="btn btn-sm btn-outline-secondary" id="btn-print-excel" type="button" title="In bảng checksheet tháng hiện tại">
-                🖨️ In checksheet
-              </button>
-              <button class="btn btn-sm btn-outline-secondary" id="btn-email-excel" type="button" title="Gửi bảng checksheet qua Outlook">
-                📧 Gửi Outlook
-              </button>
-              <button class="btn btn-sm btn-outline-secondary" id="btn-view-week-report" type="button" title="Xem báo cáo tổng hợp theo tuần">
-                📊 Xem báo cáo tuần
-              </button>
             </div>
           </div>
         </div>
@@ -383,7 +434,7 @@
           </table>
         </div>
 
-        {# Chú thích trạng thái ngày #}
+        {# ChĂº thĂ­ch tráº¡ng thĂ¡i ngĂ y #}
         <div class="d-flex gap-3 mt-2 mb-3 flex-wrap" style="font-size:11px;">
           <span><span class="day-legend day-confirmed-legend"></span> Đã xác nhận</span>
           <span><span class="day-legend day-submitted-legend"></span> Đã nộp</span>
@@ -453,7 +504,7 @@
 </div>
 
 {# ================================================================
-   POPUP CẬP NHẬT THÔNG TIN
+   POPUP Cáº¬P NHáº¬T THĂ”NG TIN
    ================================================================ #}
 <div class="modal fade" id="changePwModal" tabindex="-1" aria-labelledby="changePwModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -476,10 +527,10 @@
             <div class="col-md-6 mb-3">
               <label class="form-label fw-semibold">Giới tính</label>
               <select class="form-select" name="gender">
-                <option value="">Unknown</option>
-                <option value="male" {% if user.gender == 'male' %}selected{% endif %}>male</option>
-                <option value="female" {% if user.gender == 'female' %}selected{% endif %}>female</option>
-                <option value="other" {% if user.gender == 'other' %}selected{% endif %}>other</option>
+                <option value="">Không xác định</option>
+                <option value="Nam" {% if user.gender == 'Nam' %}selected{% endif %}>Nam</option>
+                <option value="feNam" {% if user.gender == 'feNam' %}selected{% endif %}>feNam</option>
+                <option value="Khác" {% if user.gender == 'Khác' %}selected{% endif %}>Khác</option>
               </select>
             </div>
             <div class="col-md-6 mb-3">
@@ -545,7 +596,7 @@
 </div>
 
 {# ================================================================
-   POPUP CHỌN CỘT ẨN/HIỆN
+   POPUP CHá»ŒN Cá»˜T áº¨N/HIá»†N
    ================================================================ #}
 <div class="modal fade" id="colPickerModal" tabindex="-1" aria-labelledby="colPickerLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -557,14 +608,14 @@
       <div class="modal-body">
         <p class="text-muted small mb-3">Bỏ chọn để ẩn cột tương ứng trong bảng báo cáo.</p>
         <div class="col-picker-grid" id="col-picker-list">
-          {# Các cột category_type #}
+          {# CĂ¡c cá»™t category_type #}
           {% for cat in all_category_types %}
           <label class="col-picker-item">
             <input type="checkbox" class="col-toggle-cb" data-col="{{ cat }}" checked>
             <span class="col-picker-label">{{ cat }}</span>
           </label>
           {% endfor %}
-          {# Các cột cố định #}
+          {# CĂ¡c cá»™t cá»‘ Ä‘á»‹nh #}
           <label class="col-picker-item">
             <input type="checkbox" class="col-toggle-cb" data-col="ng_count" checked>
             <span class="col-picker-label">NG phát sinh</span>
@@ -604,7 +655,7 @@ if (abnormalForm) {
     window.location.reload();
   });
 }
-// ── Click ô Excel để thay đổi kết quả: o → x → △ → (trống) ────
+// â”€â”€ Click Ă´ Excel Ä‘á»ƒ thay Ä‘á»•i káº¿t quáº£: o â†’ x â†’ △ â†’ (trá»‘ng) â”€â”€â”€â”€
 (function () {
   const CYCLE = ['o', 'x', '△', ''];
   const CLASS_MAP = { 'o': 'cell-o', 'x': 'cell-x', '△': 'cell-tri', '': '' };
@@ -623,7 +674,7 @@ if (abnormalForm) {
       if (span) span.textContent = next;
       td.dataset.current = next;
 
-      // Gửi AJAX
+      // Gá»­i AJAX
       try {
         const fd = new FormData();
         fd.append('result', next === '' ? 'empty' : next);
@@ -634,7 +685,7 @@ if (abnormalForm) {
         });
         const data = await resp.json();
         if (!data.ok) {
-          // Rollback nếu lỗi
+          // Rollback náº¿u lá»—i
           td.className = td.className.replace(/cell-o|cell-x|cell-tri/g, '').trim();
           if (CLASS_MAP[current]) td.classList.add(CLASS_MAP[current]);
           if (span) span.textContent = current;
@@ -648,7 +699,7 @@ if (abnormalForm) {
           });
         }
       } catch (e) {
-        // Rollback nếu network error
+        // Rollback náº¿u network error
         td.className = td.className.replace(/cell-o|cell-x|cell-tri/g, '').trim();
         if (CLASS_MAP[current]) td.classList.add(CLASS_MAP[current]);
         if (span) span.textContent = current;
@@ -658,7 +709,7 @@ if (abnormalForm) {
   });
 })();
 
-// ── Nút chuyển từ Excel sang báo cáo tuần ──────────────────────
+// â”€â”€ NĂºt chuyá»ƒn tá»« Excel sang bĂ¡o cĂ¡o tuáº§n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const btnSwitchToReport = document.getElementById("btn-switch-to-report");
 if (btnSwitchToReport) {
   btnSwitchToReport.addEventListener("click", () => {
@@ -668,14 +719,14 @@ if (btnSwitchToReport) {
   });
 }
 
-// ── Gửi Outlook Excel ──────────────────────────────────────────
+// â”€â”€ Gá»­i Outlook Excel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function sendOutlookExcel(e) {
   e.preventDefault();
   {% if excel_context and excel_context.latest_sheet_id %}
   const printUrl = "{{ url_for('checklist.print_checklist', sheet_id=excel_context.latest_sheet_id, _external=True) }}";
   const subject = encodeURIComponent("Checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }} - {{ user.full_name }}{% if user.role == 'staff' %} - {{ user.line_name }}{% endif %}");
   const body = encodeURIComponent(
-    "Kính gửi,\n\nVui lòng xem checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }}.\n\nNgười thực hiện: {{ user.full_name }}\nMã NV: {{ user.employee_code }}\n{% if user.role == 'staff' %}Line: {{ user.line_name }}\n{% endif %}\nLink xem chi tiết: " + printUrl
+    "Kính gửi,\n\nVui lòng xem checksheet tháng {{ '%02d'|format(excel_context.excel_month) }}/{{ excel_context.excel_year }}.\n\nNgười thực hiện: {{ user.full_name }}\nMã NV: {{ user.employee_code }}\n{% if user.role == 'staff' %}Line: {{ user.line_name }}\n{% endif %}\nLink xem chi tiáº¿t: " + printUrl
   );
   {% if user.outlook_email %}
   const to = encodeURIComponent("{{ user.outlook_email }}");
@@ -686,7 +737,7 @@ function sendOutlookExcel(e) {
   {% endif %}
 }
 
-// ── Nút in bảng Excel ─────────────────────────────────────────
+// â”€â”€ NĂºt in báº£ng Excel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const btnPrintExcel = document.getElementById("btn-print-excel");
 if (btnPrintExcel) {
   btnPrintExcel.addEventListener("click", () => {
@@ -703,14 +754,14 @@ if (btnPrintExcelHeader) {
   btnPrintExcelHeader.addEventListener("click", () => {
     const table = document.getElementById("excel-main-table");
     if (!table) {
-      alert("KhĂ´ng tĂ¬m tháº¥y báº£ng. Vui lĂ²ng chá»n thĂ¡ng trÆ°á»›c.");
+      alert("Không tìm thấy bảng. Vui lòng chọn tháng trước.");
       return;
     }
     window.print();
   });
 }
 
-// ── Nút gửi Outlook ───────────────────────────────────────────
+// â”€â”€ NĂºt gá»­i Outlook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const btnEmailExcel = document.getElementById("btn-email-excel");
 if (btnEmailExcel) {
   btnEmailExcel.addEventListener("click", () => {
@@ -738,7 +789,7 @@ if (btnEmailExcel) {
   });
 }
 
-// ── Nút xem báo cáo tuần ───────────────────────────────────────
+// â”€â”€ NĂºt xem bĂ¡o cĂ¡o tuáº§n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const btnViewWeekReport = document.getElementById("btn-view-week-report");
 if (btnViewWeekReport) {
   btnViewWeekReport.addEventListener("click", () => {
@@ -748,17 +799,17 @@ if (btnViewWeekReport) {
   });
 }
 
-// ── Nút thêm lỗi từ các ô X/△ ────────────────────────────────────
+// â”€â”€ NĂºt thĂªm lá»—i tá»« cĂ¡c Ă´ X/△ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const btnAddAbnormal = document.getElementById("btn-add-abnormal-from-sheet");
 if (btnAddAbnormal) {
   btnAddAbnormal.addEventListener("click", () => {
-    // Lấy danh sách các ô có X hoặc △
+    // Láº¥y danh sĂ¡ch cĂ¡c Ă´ cĂ³ X hoáº·c △
     const errorCells = document.querySelectorAll(".cell-x, .cell-tri");
     if (errorCells.length === 0) {
       alert("Không có lỗi (x hoặc △) nào trong bảng để thêm.");
       return;
     }
-    // Gộp thông tin các ô lỗi
+    // Gá»™p thĂ´ng tin cĂ¡c Ă´ lá»—i
     const errors = [];
     const table = document.getElementById("excel-main-table");
     if (!table) {
@@ -766,7 +817,7 @@ if (btnAddAbnormal) {
       return;
     }
     
-    // Lấy danh sách ngày từ header của bảng (hàng thứ 2 của thead)
+    // Láº¥y danh sĂ¡ch ngĂ y tá»« header cá»§a báº£ng (hĂ ng thá»© 2 cá»§a thead)
     const dayHeaders = table.querySelectorAll("thead tr:last-child th.excel-day-col");
     
     errorCells.forEach((cell) => {
@@ -774,7 +825,7 @@ if (btnAddAbnormal) {
       if (!row) return;
       const symbol = row.querySelector(".excel-col-symbol")?.textContent?.trim() || "?";
       const content = row.querySelector(".excel-col-content")?.textContent?.trim() || "?";
-      // Tìm vị trí của ô trong tất cả các ô excel-day-col của dòng
+      // TĂ¬m vá»‹ trĂ­ cá»§a Ă´ trong táº¥t cáº£ cĂ¡c Ă´ excel-day-col cá»§a dĂ²ng
       const dayCells = row.querySelectorAll(".excel-day-col");
       let dayNumber = "?";
       dayCells.forEach((dayCell, idx) => {
@@ -786,21 +837,26 @@ if (btnAddAbnormal) {
       errors.push({ symbol, content, day: dayNumber, val });
     });
     
-    // Hiển thị popup để người dùng chọn và điền thêm thông tin
+    // Hiá»ƒn thá»‹ popup Ä‘á»ƒ ngÆ°á»i dĂ¹ng chá»n vĂ  Ä‘iá»n thĂªm thĂ´ng tin
     let msg = "Các lỗi phát hiện:\n\n";
     errors.slice(0, 5).forEach((e, i) => {
       msg += (i + 1) + ". Ký hiệu: " + e.symbol + ", Ngày: " + e.day + ", Kết quả: " + e.val + "\n";
     });
-    if (errors.length > 5) msg += "... và " + (errors.length - 5) + " lỗi khác\n";
+    if (errors.length > 5) msg += "... và " + (errors.length - 5) + " lá»—i khĂ¡c\n";
     msg += "\nVui lòng chuyển sang bảng 'Nội dung lỗi và lịch sử xử lý' để thêm chi tiết từng lỗi.";
     alert(msg);
   });
 }
 
-// ── Tự mở popup đổi mật khẩu nếu cần ─────────────────────────
+// â”€â”€ Tá»± má»Ÿ popup Ä‘á»•i máº­t kháº©u náº¿u cáº§n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 {% if show_pw_modal %}
 const _pwModal = new bootstrap.Modal(document.getElementById("changePwModal"));
 _pwModal.show();
 {% endif %}
 </script>
 {% endblock %}
+
+
+
+
+

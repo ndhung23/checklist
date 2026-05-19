@@ -45,12 +45,14 @@ def categories():
     template = get_template()
     selected_line = get_line()
     lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
+    line_time_options_map = {line.line_name: LINE_TIME_OPTIONS.get(line.line_name, []) for line in lines}
     if template is None or selected_line is None:
         flash("Chưa có checklist template để quản lý hạng mục.", "warning")
         return render_template(
             "admin_categories.html",
             templates=[],
             lines=lines,
+            line_time_options_map=line_time_options_map,
             selected_template=None,
             selected_line=selected_line,
             line_time_options=[],
@@ -121,6 +123,7 @@ def categories():
         selected_template=template,
         selected_line=selected_line,
         line_time_options=LINE_TIME_OPTIONS.get(selected_line.line_name, []),
+        line_time_options_map=line_time_options_map,
         categories=categories,
         filters={"q": keyword, "status": status_filter},
         current_endpoint="category.categories",

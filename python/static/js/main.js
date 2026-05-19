@@ -63,21 +63,21 @@
   const resultClassMap = {
     o: "row-result-o",
     x: "row-result-x",
-    "â–³": "row-result-triangle",
+    "△": "row-result-triangle",
     empty: "row-result-none",
     "": "row-result-none",
   };
   const resultBadgeMap = {
     o: '<span class="badge badge-result-o">o</span>',
     x: '<span class="badge badge-result-x">x</span>',
-    "â–³": '<span class="badge badge-result-triangle">â–³</span>',
-    empty: '<span class="badge badge-result-none">Chua dien</span>',
-    "": '<span class="badge badge-result-none">Chua dien</span>',
+    "△": '<span class="badge badge-result-triangle">△</span>',
+    empty: '<span class="badge badge-result-none">Chưa điền</span>',
+    "": '<span class="badge badge-result-none">Chưa điền</span>',
   };
 
   const ensureEmptyAbnormalRow = (tbody, colspan = 9) => {
     if (tbody.querySelector("[data-report-result-id]")) return;
-    tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-muted py-4">Khong co abnormal report.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-muted py-4">Không có báo cáo bất thường.</td></tr>`;
   };
 
   window.updateAbnormalTableFromPayload = (payload, options = {}) => {
@@ -108,7 +108,7 @@
             data-countermeasure=""
             data-confirm-date=""
             data-result-after-fix=""
-            data-status="${payload.status || "open"}">Sua xu ly</button>`
+            data-status="${payload.status || "open"}">Sửa xử lý</button>`
       : "";
     const html = options.compact ? `
       <td>${payload.symbol || ""}</td>
@@ -232,7 +232,7 @@
     function updatePanelState(animate) {
       if (isOpen) {
         panel.style.display = "block";
-        toggleIcon.textContent = "â–²";
+        toggleIcon.innerHTML = '<i class="bi bi-chevron-up"></i>';
         document.body.classList.add("notif-panel-open");
         if (mainWrapper) {
           const panelH = panel.offsetHeight;
@@ -240,7 +240,7 @@
         }
       } else {
         panel.style.display = "none";
-        toggleIcon.textContent = "â–¼";
+        toggleIcon.innerHTML = '<i class="bi bi-chevron-down"></i>';
         document.body.classList.remove("notif-panel-open");
         if (mainWrapper) {
           mainWrapper.style.paddingTop = "";
@@ -312,3 +312,5 @@
     });
   }
 });
+
+
