@@ -76,6 +76,9 @@ TRANSLATIONS = {
 }
 
 ROLE_LABELS = {
+    "admin": "Admin",
+    "manager": "Manager",
+    "supervisor": "Supervisor",
     "staff": "Tổ phó",
     "leader": "Tổ trưởng",
 }
@@ -107,6 +110,9 @@ def ensure_database_schema(app: Flask) -> None:
             if "manager_id" not in user_columns:
                 db.session.execute(text("ALTER TABLE users ADD COLUMN manager_id INTEGER"))
                 db.session.commit()
+            if "supervisor_id" not in user_columns:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN supervisor_id INTEGER"))
+                db.session.commit()
             if "leader_id" not in user_columns:
                 db.session.execute(text("ALTER TABLE users ADD COLUMN leader_id INTEGER"))
                 db.session.commit()
@@ -115,6 +121,7 @@ def ensure_database_schema(app: Flask) -> None:
                 {"outlook": TEMP_SHARED_OUTLOOK},
             )
             db.session.execute(text("UPDATE users SET manager_id = NULL WHERE role IN ('leader', 'staff')"))
+            db.session.execute(text("UPDATE users SET supervisor_id = NULL WHERE role IN ('manager', 'staff')"))
             db.session.commit()
 
         if "notifications" not in inspector.get_table_names():

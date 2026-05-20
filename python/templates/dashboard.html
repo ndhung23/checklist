@@ -18,7 +18,7 @@
         <div class="card h-100">
             <div class="card-header bg-white border-0 pb-0 d-flex align-items-center justify-content-between gap-2">
                 <h2 class="section-title mb-0">Daily Sheets</h2>
-                {% if current_user and current_user.role in ['manager', 'admin', 'leader'] %}
+                {% if current_user and current_user.role in ['manager', 'admin', 'supervisor', 'leader'] %}
                     <a class="btn btn-sm btn-outline-primary no-print" href="{{ url_for('admin.leader_assignments') }}" title="Gán Tổ phó vào Tổ trưởng">
                         <i class="bi bi-person-lines-fill"></i>
                     </a>
@@ -33,6 +33,7 @@
                                 <th class="w-50">User</th>
                                 <th>Line</th>
                                 <th>Status</th>
+                                {% if current_user and current_user.role in ['manager', 'supervisor', 'leader'] %}<th></th>{% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -57,10 +58,19 @@
                                         }.get(sheet.status, sheet.status) %}
                                         <span class="badge sheet-status-badge sheet-status-{{ sheet.status }}">{{ status_label }}</span>
                                     </td>
+                                    {% if current_user and current_user.role in ['manager', 'supervisor', 'leader'] %}
+                                    <td>
+                                        <form method="post" action="{{ url_for('checklist.remind_user', user_id=sheet.user.id) }}">
+                                            <button class="btn btn-sm btn-outline-warning" type="submit" title="Nhắc nộp checklist">
+                                                <i class="bi bi-bell"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                    {% endif %}
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-4">Không có daily sheet.</td>
+                                    <td colspan="5" class="text-center text-muted py-4">Không có daily sheet.</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -278,6 +288,7 @@
                                                 <button class="btn btn-sm btn-outline-success status-btn js-result-btn" type="button" data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}" data-result="o">o</button>
                                                 <button class="btn btn-sm btn-outline-danger status-btn js-result-btn" type="button"
                                                     data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}"
+                                                    data-action="{{ url_for('checklist.ajax_abnormal_result', result_id=result.id) }}"
                                                     data-result="x" data-id="{{ result.id }}" data-symbol="{{ result.symbol }}"
                                                     data-date="{{ result_work_date(selected_sheet.line_name, selected_sheet.check_date, result.check_time).isoformat() }}"
                                                     data-content="{{ get_item_content(result.checklist_item, current_lang) }}"
@@ -288,6 +299,7 @@
                                                     data-status="{{ result.abnormal_reports[0].status if result.abnormal_reports else 'open' }}">x</button>
                                                 <button class="btn btn-sm btn-outline-warning status-btn js-result-btn" type="button"
                                                     data-url="{{ url_for('checklist.ajax_update_result', result_id=result.id) }}"
+                                                    data-action="{{ url_for('checklist.ajax_abnormal_result', result_id=result.id) }}"
                                                     data-result="△" data-id="{{ result.id }}" data-symbol="{{ result.symbol }}"
                                                     data-date="{{ result_work_date(selected_sheet.line_name, selected_sheet.check_date, result.check_time).isoformat() }}"
                                                     data-content="{{ get_item_content(result.checklist_item, current_lang) }}"
@@ -371,7 +383,7 @@
                                         {% if can_edit_selected %}
                                             <button class="btn btn-sm btn-outline-primary abnormal-trigger" type="button"
                                                 data-bs-toggle="modal" data-bs-target="#abnormalModal"
-                                                data-action="{{ url_for('checklist.update_abnormal_result', result_id=report.daily_check_result_id) }}"
+                                                data-action="{{ url_for('checklist.ajax_abnormal_result', result_id=report.daily_check_result_id) }}"
                                                 data-result="{{ report.daily_check_result.result }}"
                                                 data-id="{{ report.daily_check_result_id }}"
                                                 data-symbol="{{ report.symbol }}"

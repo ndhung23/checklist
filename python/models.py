@@ -11,9 +11,10 @@ db = SQLAlchemy()
 
 ROLE_ADMIN = "admin"
 ROLE_MANAGER = "manager"
+ROLE_SUPERVISOR = "supervisor"
 ROLE_LEADER = "leader"
 ROLE_STAFF = "staff"
-VALID_ROLES = {ROLE_ADMIN, ROLE_MANAGER, ROLE_LEADER, ROLE_STAFF}
+VALID_ROLES = {ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERVISOR, ROLE_LEADER, ROLE_STAFF}
 
 NOTIFICATION_UNREAD = "unread"
 NOTIFICATION_READ = "read"
@@ -66,7 +67,7 @@ class User(db.Model):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('admin', 'manager', 'leader', 'staff')",
+            "role IN ('admin', 'manager', 'supervisor', 'leader', 'staff')",
             name="ck_users_role",
         ),
         CheckConstraint(
@@ -86,6 +87,7 @@ class User(db.Model):
     line_name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False, default=ROLE_STAFF)
     manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    supervisor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     leader_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -95,6 +97,12 @@ class User(db.Model):
         remote_side=[id],
         foreign_keys=[manager_id],
         backref="managed_users",
+    )
+    supervisor = db.relationship(
+        "User",
+        remote_side=[id],
+        foreign_keys=[supervisor_id],
+        backref="supervised_users",
     )
     leader = db.relationship(
         "User",
@@ -134,7 +142,7 @@ class User(db.Model):
 
     @property
     def can_confirm(self) -> bool:
-        return self.role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_LEADER}
+        return self.role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERVISOR, ROLE_LEADER}
 
 
 class ChecklistTemplate(db.Model):
@@ -335,7 +343,7 @@ class DailyConfirmation(db.Model):
             name="uq_daily_confirmations_sheet_role",
         ),
         CheckConstraint(
-            "confirmed_role IN ('admin', 'manager', 'leader')",
+            "confirmed_role IN ('admin', 'manager', 'supervisor', 'leader')",
             name="ck_daily_confirmations_role",
         ),
     )

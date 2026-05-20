@@ -52,7 +52,7 @@ def parse_date(raw_value: str | None, fallback: date | None = None) -> date:
 
 
 def managed_line_names(user: User) -> set[str]:
-    if user.role in {"admin", "manager", "leader"}:
+    if user.role in {"admin", "manager", "supervisor", "leader"}:
         return {line.line_name for line in Line.query.filter_by(is_active=True).all()}
     return {mapping.line.line_name for mapping in user.user_lines}
 
@@ -158,7 +158,7 @@ def leader_users_for_line(line_name: str) -> list[User]:
 
 def higher_level_users() -> list[User]:
     return (
-        User.query.filter(User.role.in_(["manager", "admin"]), User.is_active.is_(True))
+        User.query.filter(User.role.in_(["manager", "supervisor", "admin"]), User.is_active.is_(True))
         .order_by(User.role.desc(), User.full_name.asc())
         .all()
     )
@@ -243,13 +243,13 @@ def period_label_vi(period_type: str) -> str:
 def line_time_sort_key(line_name: str | None, check_time, fallback_id: int = 0) -> tuple[int, int, int]:
     hour = check_time.hour if check_time else 0
     minute = check_time.minute if check_time else 0
-    if line_name == "Line D" and hour < 6:
+    if line_name in {"Line D", "Ca 3"} and hour < 6:
         hour += 24
     return hour, minute, fallback_id
 
 
 def result_work_date(line_name: str | None, sheet_date: date, check_time) -> date:
-    if line_name == "Line D" and check_time and check_time.hour >= 22:
+    if line_name in {"Line D", "Ca 3"} and check_time and check_time.hour >= 22:
         return sheet_date - timedelta(days=1)
     return sheet_date
 
@@ -416,7 +416,7 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
                     key=lambda result: line_time_sort_key(sheet.line_name, result.check_time, result.id),
                 )
                 final_dt = datetime.combine(anchor_date, last_result.check_time)
-                if sheet.line_name == "Line D" and last_result.check_time.hour < 6:
+                if sheet.line_name in {"Line D", "Ca 3"} and last_result.check_time.hour < 6:
                     final_dt += timedelta(days=1)
                 if final_dt - timedelta(hours=2) <= now <= final_dt:
                     upsert_email_reminder(
@@ -482,7 +482,7 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
         now = datetime.now()
         if now.weekday() == 4 and now.hour >= 17:
             start_date, end_date = period_bounds(anchor_date, "week")
-            for manager in higher_level_users():
+            for manager in [current_user.supervisor] if current_user.supervisor else []:
                 upsert_email_reminder(
                     manager,
                     "Nhac nho: can nhan bao cao tuan",
@@ -492,8 +492,37 @@ def build_reminders_for_user(current_user: User, anchor_date: date) -> None:
                     ),
                     "week",
                     anchor_date,
-                    f"manager-weekly-leader-submit:{manager.id}:{current_user.id}:{start_date.isoformat()}",
+                    f"supervisor-weekly-leader-submit:{manager.id}:{current_user.id}:{start_date.isoformat()}",
                 )
+
+    if current_user.role == "supervisor":
+        sheets = (
+            DailyCheckSheet.query.join(User)
+            .filter(
+                User.role == "leader",
+                User.supervisor_id == current_user.id,
+                DailyCheckSheet.check_date == anchor_date,
+            )
+            .all()
+        )
+        pending_sheets = [
+            sheet
+            for sheet in sheets
+            if sheet_is_submitted(sheet) and not sheet_has_confirmation(sheet, {"supervisor"})
+        ]
+        dedupe_key = f"supervisor-confirm:{current_user.id}:day:{anchor_date.isoformat()}"
+        if pending_sheets:
+            upsert_notification(
+                current_user,
+                "Nhắc nhở: Xác nhận checklist ngày của Leader",
+                f"Còn {len(pending_sheets)} checklist của leader chưa được supervisor xác nhận ngày {anchor_date.strftime('%d/%m/%Y')}.",
+                "day",
+                anchor_date,
+                dedupe_key,
+                pending_sheets[0].id,
+            )
+        else:
+            resolve_notification(current_user, dedupe_key)
 
     if current_user.role in {"manager", "admin"}:
         # Nhắc xác nhận checklist tổ trưởng theo tuần/tháng
@@ -590,18 +619,30 @@ def build_outlook_url(sheet: DailyCheckSheet | None, results: list[DailyCheckRes
 
 
 def can_view_sheet(user: User, sheet: DailyCheckSheet) -> bool:
-    if user.role in {"admin", "manager"}:
+    if sheet.user_id == user.id:
         return True
+    if user.role == "admin":
+        return True
+    if user.role == "manager":
+        return sheet.user.role == "supervisor" and sheet.user.manager_id == user.id
+    if user.role == "supervisor":
+        return sheet.user.role == "leader" and sheet.user.supervisor_id == user.id
     if user.role == "leader":
         return sheet.user.role == "staff" and sheet.user.leader_id == user.id
     return sheet.user_id == user.id
 
 
 def can_edit_result(user: User, result: DailyCheckResult) -> bool:
-    if result.daily_sheet.status in {SHEET_STATUS_SUBMITTED, SHEET_STATUS_CONFIRMED} and user.role == "staff":
+    if result.daily_sheet.status in {SHEET_STATUS_SUBMITTED, SHEET_STATUS_CONFIRMED} and result.user_id == user.id:
         return False
-    if user.role in {"admin", "manager"}:
+    if result.user_id == user.id:
         return True
+    if user.role == "admin":
+        return True
+    if user.role == "manager":
+        return result.daily_sheet.user.role == "supervisor" and result.daily_sheet.user.manager_id == user.id
+    if user.role == "supervisor":
+        return result.daily_sheet.user.role == "leader" and result.daily_sheet.user.supervisor_id == user.id
     if user.role == "leader":
         return result.daily_sheet.user.role == "staff" and result.daily_sheet.user.leader_id == user.id
     return result.user_id == user.id
@@ -614,22 +655,34 @@ def can_submit_sheet(user: User, sheet: DailyCheckSheet) -> bool:
 def can_confirm_sheet(user: User, sheet: DailyCheckSheet) -> bool:
     if user.role == "admin":
         return True
+    if user.role == "manager":
+        return sheet.user.role == "supervisor" and sheet.user.manager_id == user.id
+    if user.role == "supervisor":
+        return sheet.user.role == "leader" and sheet.user.supervisor_id == user.id
     if user.role == "leader":
         return sheet.user.role == "staff" and sheet.user.leader_id == user.id
-    if user.role == "manager":
-        return True
     return False
 
 
 def can_write_leader_note(user: User, result: DailyCheckResult) -> bool:
-    if user.role in {"admin", "manager"}:
+    if user.role in {"admin", "manager", "supervisor"}:
         return True
     if user.role == "leader":
         return result.daily_sheet.user.role == "staff" and result.daily_sheet.user.leader_id == user.id
     return False
 
 
-def get_template_id() -> int:
+def template_code_for_role(role: str) -> str:
+    return "SV_DSV_VN" if role == "supervisor" else "TL_SL_VN"
+
+
+def get_template_id(role: str | None = None) -> int:
+    from models import ChecklistTemplate
+
+    if role:
+        template = ChecklistTemplate.query.filter_by(template_code=template_code_for_role(role), is_active=True).first()
+        if template:
+            return template.id
     sheet = DailyCheckSheet.query.first()
     return sheet.template_id if sheet else 1
 
@@ -731,6 +784,15 @@ def get_target_users(current_user: User, selected_user_id: int | None, selected_
         return query.order_by(User.full_name.asc()).all()
     if current_user.role == "leader":
         query = query.filter(User.role == "staff", User.leader_id == current_user.id)
+    elif current_user.role == "supervisor":
+        query = query.filter(
+            or_(
+                User.id == current_user.id,
+                (User.role == "leader") & (User.supervisor_id == current_user.id),
+            )
+        )
+    elif current_user.role == "manager":
+        query = query.filter(User.role == "supervisor", User.manager_id == current_user.id)
 
     if selected_user_id:
         query = query.filter(User.id == selected_user_id)
@@ -750,7 +812,7 @@ def build_dashboard_context(
     active_section: str = "checklist",
 ):
     current_user = g.current_user
-    template_id = get_template_id()
+    template_id = get_template_id(current_user.role)
     build_reminders_for_user(current_user, selected_date)
     staff_missing_line = current_user.role == "staff" and not selected_line
 
@@ -759,7 +821,7 @@ def build_dashboard_context(
         for user in target_users:
             ensure_daily_sheet_and_results(
                 user.id,
-                template_id,
+                get_template_id(user.role),
                 selected_date,
                 selected_line if current_user.role == "staff" else None,
             )
@@ -769,6 +831,15 @@ def build_dashboard_context(
         query = query.filter(DailyCheckSheet.user_id == current_user.id)
     elif current_user.role == "leader":
         query = query.filter(User.role == "staff", User.leader_id == current_user.id)
+    elif current_user.role == "supervisor":
+        query = query.filter(
+            or_(
+                User.id == current_user.id,
+                (User.role == "leader") & (User.supervisor_id == current_user.id),
+            )
+        )
+    elif current_user.role == "manager":
+        query = query.filter(User.role == "supervisor", User.manager_id == current_user.id)
     if selected_line:
         query = query.filter(DailyCheckSheet.line_name == selected_line)
     if selected_user_id:
@@ -865,9 +936,25 @@ def build_dashboard_context(
     if current_user.role == "staff" and selected_sheet and selected_sheet.user_id == current_user.id:
         outlook_url = build_outlook_url(selected_sheet, results)
 
-    if current_user.role in {"admin", "manager"}:
+    if current_user.role == "admin":
         visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
         visible_users = User.query.filter(User.role != "admin").order_by(User.full_name.asc()).all()
+    elif current_user.role == "manager":
+        visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
+        visible_users = User.query.filter(
+            User.role == "supervisor",
+            User.manager_id == current_user.id,
+            User.is_active.is_(True),
+        ).order_by(User.full_name.asc()).all()
+    elif current_user.role == "supervisor":
+        visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
+        visible_users = User.query.filter(
+            or_(
+                User.id == current_user.id,
+                (User.role == "leader") & (User.supervisor_id == current_user.id),
+            ),
+            User.is_active.is_(True),
+        ).order_by(User.full_name.asc()).all()
     elif current_user.role == "leader":
         visible_lines = Line.query.filter_by(is_active=True).order_by(Line.line_name.asc()).all()
         visible_users = User.query.filter(
@@ -881,7 +968,7 @@ def build_dashboard_context(
 
     staff_assignments = []
     leaders_for_assignment = []
-    if current_user.role in {"manager", "admin", "leader"}:
+    if current_user.role in {"manager", "admin", "supervisor", "leader"}:
         leaders_for_assignment = User.query.filter(
             User.role == "leader",
             User.is_active.is_(True),
@@ -923,7 +1010,7 @@ def build_dashboard_context(
         "can_edit_selected": bool(
             selected_sheet
             and (
-                current_user.role in {"admin", "manager"}
+                current_user.role in {"admin", "manager", "supervisor"}
                 or current_user.id == selected_sheet.user_id
                 or (
                     current_user.role == "leader"
@@ -1007,6 +1094,40 @@ def mark_notification_read(notification_id: int):
     return redirect(request.referrer or url_for("checklist.dashboard"))
 
 
+@checklist_bp.route("/users/<int:user_id>/remind", methods=["POST"])
+@login_required
+def remind_user(user_id: int):
+    target = User.query.get_or_404(user_id)
+    actor = g.current_user
+    allowed = (
+        (actor.role == "leader" and target.role == "staff" and target.leader_id == actor.id)
+        or (actor.role == "supervisor" and target.role == "leader" and target.supervisor_id == actor.id)
+        or (actor.role == "manager" and target.role == "supervisor" and target.manager_id == actor.id)
+        or actor.role == "admin"
+    )
+    if not allowed:
+        flash("Bạn không có quyền nhắc tài khoản này.", "danger")
+        return redirect(request.referrer or url_for("checklist.dashboard"))
+
+    today = date.today()
+    period_type = "day" if actor.role == "leader" else ("week" if actor.role == "supervisor" else "month")
+    title = "Nhắc nộp checklist"
+    message = f"{actor.full_name} nhắc bạn hoàn thành và nộp checklist {period_label(period_type)}."
+    upsert_notification(
+        target,
+        title,
+        message,
+        period_type,
+        today,
+        f"manual-remind:{actor.id}:{target.id}:{period_type}:{today.isoformat()}",
+    )
+    if target.outlook_email:
+        send_outlook_email(target.outlook_email, title, message)
+    db.session.commit()
+    flash("Đã gửi nhắc nhở.", "success")
+    return redirect(request.referrer or url_for("checklist.dashboard"))
+
+
 @checklist_bp.route("/sheets/<int:sheet_id>/submit", methods=["POST"])
 @login_required
 def submit_sheet(sheet_id: int):
@@ -1025,14 +1146,20 @@ def submit_sheet(sheet_id: int):
 
     sheet.status = SHEET_STATUS_SUBMITTED
     db.session.commit()
-    leader = sheet.user.leader or (leader_users_for_line(sheet.line_name)[0] if leader_users_for_line(sheet.line_name) else None)
-    if leader and leader.outlook_email:
+    receiver = None
+    if sheet.user.role == "staff":
+        receiver = sheet.user.leader or (leader_users_for_line(sheet.line_name)[0] if leader_users_for_line(sheet.line_name) else None)
+    elif sheet.user.role == "leader":
+        receiver = sheet.user.supervisor
+    elif sheet.user.role == "supervisor":
+        receiver = sheet.user.manager
+    if receiver and receiver.outlook_email:
         results = DailyCheckResult.query.filter_by(daily_sheet_id=sheet.id).all()
         results = sorted(results, key=lambda result: line_time_sort_key(sheet.line_name, result.check_time, result.id))
         print_url = url_for("checklist.print_checklist", sheet_id=sheet.id, _external=True)
         send_outlook_email(
-            leader.outlook_email,
-            f"Staff submitted checklist: {sheet.user.full_name} - {sheet.check_date.strftime('%d/%m/%Y')}",
+            receiver.outlook_email,
+            f"Submitted checklist: {sheet.user.full_name} - {sheet.check_date.strftime('%d/%m/%Y')}",
             f"{build_outlook_body(sheet, results)}\n\nConfirm URL: {print_url}",
         )
     flash("Đã nộp checklist thành công. Vui lòng chờ tổ trưởng xác nhận.", "success")
@@ -1154,6 +1281,43 @@ def confirm_sheet(sheet_id: int):
             )
 
     # Gửi thông báo cho leader khi manager xác nhận checklist tuần/tháng
+    if g.current_user.role == "supervisor" and sheet.user.role == "leader":
+        dedupe_key = f"leader-confirmed-by-supervisor:{sheet.user_id}:{sheet.id}"
+        upsert_notification(
+            sheet.user,
+            "Checklist ngày đã được Supervisor xác nhận",
+            f"Checklist ngày {sheet.check_date.strftime('%d/%m/%Y')} đã được {g.current_user.full_name} xác nhận lúc {confirmed_at.strftime('%H:%M %d/%m/%Y')}.",
+            "day",
+            sheet.check_date,
+            dedupe_key,
+            sheet.id,
+        )
+        if sheet.user.outlook_email:
+            send_outlook_email(
+                sheet.user.outlook_email,
+                f"Checklist confirmed: {sheet.check_date.strftime('%d/%m/%Y')}",
+                f"Checklist ngày {sheet.check_date.strftime('%d/%m/%Y')} đã được {g.current_user.full_name} xác nhận.",
+            )
+
+    if g.current_user.role == "manager" and sheet.user.role == "supervisor":
+        start_date, end_date = period_bounds(sheet.check_date, "month")
+        dedupe_key = f"supervisor-confirmed-by-manager:{sheet.user_id}:month:{sheet.id}"
+        upsert_notification(
+            sheet.user,
+            "Checklist tháng đã được Manager xác nhận",
+            f"Checklist tháng (từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}) đã được {g.current_user.full_name} xác nhận lúc {confirmed_at.strftime('%H:%M %d/%m/%Y')}.",
+            "month",
+            sheet.check_date,
+            dedupe_key,
+            sheet.id,
+        )
+        if sheet.user.outlook_email:
+            send_outlook_email(
+                sheet.user.outlook_email,
+                f"Monthly checklist confirmed: {sheet.check_date.strftime('%m/%Y')}",
+                f"Checklist tháng đã được {g.current_user.full_name} xác nhận.",
+            )
+
     if g.current_user.role in {"manager", "admin"} and sheet.user.role == "leader":
         for period_type in ["week", "month"]:
             start_date, end_date = period_bounds(sheet.check_date, period_type)
@@ -1351,6 +1515,72 @@ def update_abnormal_result(result_id: int):
     db.session.commit()
     flash("Đã cập nhật nội dung bất thường.", "success")
     return redirect_to_sheet(result.daily_sheet, "abnormal")
+
+
+@checklist_bp.route("/check-result/<int:result_id>/abnormal-json", methods=["POST"])
+@login_required
+def ajax_abnormal_result(result_id: int):
+    result = DailyCheckResult.query.get_or_404(result_id)
+    if not can_view_sheet(g.current_user, result.daily_sheet) or not can_edit_result(g.current_user, result):
+        return jsonify({"ok": False, "message": "Permission denied."}), 403
+
+    selected_result = request.form.get("result", "").strip()
+    if selected_result not in {RESULT_NG, RESULT_ABNORMAL}:
+        return jsonify({"ok": False, "message": "Ket qua phai la x hoac triangle."}), 400
+
+    abnormal_content = request.form.get("abnormal_content", "").strip()
+    if not abnormal_content:
+        return jsonify({"ok": False, "message": "Vui long nhap noi dung bat thuong."}), 400
+
+    actual_date = result_work_date(result.daily_sheet.line_name, result.daily_sheet.check_date, result.check_time)
+    result.result = selected_result
+    result.check_date = actual_date
+    result.checked_at = datetime.now()
+    result.abnormal_note = abnormal_content
+
+    confirm_date_before_fix = parse_date(request.form.get("confirm_date_before_fix"), fallback=actual_date)
+    status = request.form.get("status", ABNORMAL_STATUS_OPEN).strip() or ABNORMAL_STATUS_OPEN
+    if status not in VALID_ABNORMAL_STATUSES:
+        status = ABNORMAL_STATUS_OPEN
+
+    report = result.abnormal_reports[0] if result.abnormal_reports else None
+    if report is None:
+        report = AbnormalReport(
+            daily_sheet=result.daily_sheet,
+            daily_check_result=result,
+            user=result.user,
+            symbol=result.symbol,
+            occurred_date=actual_date,
+            abnormal_content=abnormal_content,
+        )
+        db.session.add(report)
+
+    report.symbol = result.symbol
+    report.occurred_date = actual_date
+    report.abnormal_content = abnormal_content
+    report.countermeasure = request.form.get("countermeasure", "").strip()
+    report.confirm_date_before_fix = confirm_date_before_fix
+    report.result_after_fix = request.form.get("result_after_fix", "").strip()
+    report.status = status
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "result": result.result,
+        "note": result.abnormal_note or "",
+        "abnormal": True,
+        "result_id": result.id,
+        "symbol": result.symbol,
+        "date": actual_date.isoformat(),
+        "date_label": actual_date.strftime("%d/%m/%Y"),
+        "content": result.content or "",
+        "countermeasure": report.countermeasure or "",
+        "confirm_date": report.confirm_date_before_fix.isoformat() if report.confirm_date_before_fix else "",
+        "confirm_date_label": report.confirm_date_before_fix.strftime("%d/%m/%Y") if report.confirm_date_before_fix else "-",
+        "result_after_fix": report.result_after_fix or "",
+        "status": report.status,
+        "abnormal_url": url_for("checklist.ajax_abnormal_result", result_id=result.id),
+    })
 
 
 @checklist_bp.route("/abnormal-reports")

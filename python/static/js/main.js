@@ -105,9 +105,9 @@
             data-date="${payload.date || ""}"
             data-content="${payload.content || ""}"
             data-note="${payload.note || payload.content || ""}"
-            data-countermeasure=""
-            data-confirm-date=""
-            data-result-after-fix=""
+            data-countermeasure="${payload.countermeasure || ""}"
+            data-confirm-date="${payload.confirm_date || ""}"
+            data-result-after-fix="${payload.result_after_fix || ""}"
             data-status="${payload.status || "open"}">Sửa xử lý</button>`
       : "";
     const html = options.compact ? `
@@ -143,6 +143,25 @@
 
   document.querySelectorAll(".js-result-btn").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (button.dataset.result === "x" || button.dataset.result === "△") {
+        const modalEl = document.getElementById("abnormalModal");
+        const form = document.getElementById("abnormalForm");
+        if (modalEl && form && window.bootstrap) {
+          form.action = button.dataset.action || "";
+          document.getElementById("modalResultId").value = button.dataset.id || "";
+          document.getElementById("modalSymbol").value = button.dataset.symbol || "";
+          document.getElementById("modalDate").value = button.dataset.date || "";
+          document.getElementById("modalResult").value = button.dataset.result || "x";
+          document.getElementById("modalContent").value = button.dataset.content || "";
+          document.getElementById("modalNote").value = button.dataset.note || button.dataset.content || "";
+          document.getElementById("modalCountermeasure").value = button.dataset.countermeasure || "";
+          document.getElementById("modalConfirmDate").value = button.dataset.confirmDate || "";
+          document.getElementById("modalResultAfterFix").value = button.dataset.resultAfterFix || "";
+          document.getElementById("modalStatus").value = button.dataset.status || "open";
+          window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+          return;
+        }
+      }
       const formData = new FormData();
       formData.append("result", button.dataset.result || "");
       button.disabled = true;
@@ -214,6 +233,45 @@
       document.getElementById("modalConfirmDate").value = button.dataset.confirmDate || "";
       document.getElementById("modalResultAfterFix").value = button.dataset.resultAfterFix || "";
       document.getElementById("modalStatus").value = button.dataset.status || "open";
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submitButton = form.querySelector("button[type='submit']");
+      if (submitButton) submitButton.disabled = true;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.message || "Update failed");
+
+        const resultButton = document.querySelector(`.js-result-btn[data-id="${payload.result_id}"][data-result="${payload.result}"]`);
+        const row = resultButton ? resultButton.closest("tr") : document.querySelector(`tr:has(.js-result-btn[data-id="${payload.result_id}"])`);
+        if (row) {
+          row.classList.remove("row-result-o", "row-result-x", "row-result-triangle", "row-result-none");
+          row.classList.add(resultClassMap[payload.result] || "row-result-none");
+          const resultCell = row.querySelector("[data-result-cell]");
+          if (resultCell) resultCell.innerHTML = resultBadgeMap[payload.result] || resultBadgeMap.empty;
+          const noteCell = row.querySelector("[data-note-cell]");
+          if (noteCell) noteCell.textContent = payload.note || "-";
+          row.querySelectorAll(`.js-result-btn[data-id="${payload.result_id}"]`).forEach((button) => {
+            button.dataset.note = payload.note || "";
+            button.dataset.countermeasure = payload.countermeasure || "";
+            button.dataset.confirmDate = payload.confirm_date || "";
+            button.dataset.resultAfterFix = payload.result_after_fix || "";
+            button.dataset.status = payload.status || "open";
+          });
+        }
+        window.updateAbnormalTableFromPayload(payload);
+        window.bootstrap.Modal.getOrCreateInstance(modal).hide();
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        if (submitButton) submitButton.disabled = false;
+      }
     });
   }
 

@@ -54,6 +54,65 @@
         <form method="get" action="{{ url_for('auth.profile') }}" id="profile-filter-form"
               data-view-mode="{{ view_mode }}" data-show-pw-modal="{{ '1' if show_pw_modal else '0' }}">
           <input type="hidden" name="view" id="filter-view-mode" value="{{ view_mode }}">
+
+          {# ── Manager: chọn SV ── #}
+          {% if user.role == 'manager' and sv_options %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">👤 Chọn Supervisor</label>
+            <select class="form-select" name="excel_sv_id" id="filter-sv-id">
+              {% for sv in sv_options %}
+              <option value="{{ sv.id }}" {% if excel_sv_id == sv.id %}selected{% endif %}>
+                {{ sv.full_name }} ({{ sv.employee_code }})
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          {# ── SV hoặc Manager xem file SV: chọn loại file ── #}
+          {% if user.role in ['supervisor', 'manager'] %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📋 Loại file</label>
+            <div class="d-flex flex-column gap-1">
+              <label class="file-kind-option {% if excel_sheet == 'sv' %}active{% endif %}">
+                <input type="radio" name="excel_sheet" value="sv"
+                  {% if excel_sheet == 'sv' %}checked{% endif %}
+                  class="file-kind-radio">
+                <span>📄 File SV (của Supervisor)</span>
+              </label>
+              <label class="file-kind-option {% if excel_sheet == 'tl_shift' %}active{% endif %}">
+                <input type="radio" name="excel_sheet" value="tl_shift"
+                  {% if excel_sheet == 'tl_shift' %}checked{% endif %}
+                  class="file-kind-radio">
+                <span>📄 File TL ca (SL/TL ca)</span>
+              </label>
+              <label class="file-kind-option {% if excel_sheet == 'tl_admin' %}active{% endif %}">
+                <input type="radio" name="excel_sheet" value="tl_admin"
+                  {% if excel_sheet == 'tl_admin' %}checked{% endif %}
+                  class="file-kind-radio">
+                <span>📄 File TL hành chính</span>
+              </label>
+            </div>
+          </div>
+          {% endif %}
+
+          {# ── Chọn tháng Excel ── #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📅 Tháng xem Excel</label>
+            {% if excel_line %}
+            <input type="hidden" name="excel_line" value="{{ excel_line }}">
+            {% endif %}
+            <select class="form-select" name="excel_month" id="filter-excel-month">
+              <option value="">— Chọn tháng —</option>
+              {% for opt in month_options %}
+              <option value="{{ opt.value }}"
+                {% if excel_month == opt.value %}selected{% endif %}>
+                {{ opt.label }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
           <div class="mb-3">
             <label class="form-label fw-semibold">Từ ngày</label>
             <input class="form-control" type="date" name="date_from" value="{{ date_from }}" id="filter-date-from">
@@ -69,28 +128,10 @@
             <button class="btn btn-sm btn-outline-secondary quick-range-btn" type="button" data-range="year">Năm nay</button>
           </div>
 
-
-
           <div class="d-grid gap-2">
-            <button class="btn btn-primary" type="button" id="btn-view-report">📊 Báo cáo</button>
-            <button class="btn btn-outline-primary" type="button" id="btn-view-daily">📅 Xem theo ngày</button>
-            <button class="btn btn-outline-secondary" type="button" id="btn-apply-range">Xem báo cáo (khoảng ngày)</button>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Xem dạng Excel (theo tháng)</label>
-            {% if excel_line %}
-            <input type="hidden" name="excel_line" value="{{ excel_line }}">
-            {% endif %}
-            <select class="form-select" name="excel_month" id="filter-excel-month">
-              <option value="">— Chọn tháng —</option>
-              {% for opt in month_options %}
-              <option value="{{ opt.value }}"
-                {% if excel_month == opt.value %}selected{% endif %}>
-                {{ opt.label }}
-              </option>
-              {% endfor %}
-            </select>
-            <div class="form-text">Chọn tháng để hiển thị bảng checksheet 31 ngày giống file Excel.</div>
+            <button class="btn btn-primary" type="submit" id="btn-view-excel">📊 Xem Excel</button>
+            <button class="btn btn-outline-primary" type="button" id="btn-view-report">📈 Báo cáo tuần</button>
+            <button class="btn btn-outline-secondary" type="button" id="btn-view-daily">📅 Xem theo ngày</button>
           </div>
         </form>
       </div>
@@ -105,7 +146,8 @@
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
       <div>
         <h2 class="section-title mb-0" id="report-title">
-          {% if view_mode == 'excel' %}Checksheet tuần tra nhà máy
+          {% if view_mode == 'excel' and excel_sheet == 'sv' %}Checksheet tuần tra xưởng
+          {% elif view_mode == 'excel' %}Checksheet tuần tra nhà máy
           {% elif view_mode == 'daily' %}Báo cáo theo ngày
           {% else %}Báo cáo tổng hợp theo tuần{% endif %}
         </h2>
@@ -133,9 +175,8 @@
 
       {# NĂºt cho cháº¿ Ä‘á»™ Excel #}
       <div class="d-flex gap-2" id="excel-header-actions" {% if view_mode != 'excel' %}style="display:none;"{% endif %}>
-        {% if excel_context and excel_context.latest_sheet_id %}
         <a class="btn btn-sm btn-outline-dark" id="btn-print-month-header"
-           href="{{ url_for('auth.print_profile_month', excel_month=excel_month, excel_line=excel_line, autoprint=1) }}"
+           href="{{ url_for('auth.print_profile_month', excel_month=excel_month, excel_line=excel_line, excel_sheet=excel_sheet, excel_sv_id=excel_sv_id if excel_sv_id else '', autoprint=1) }}"
            target="_blank">
           🖨 In tháng
         </a>
@@ -146,7 +187,6 @@
            href="#" onclick="sendOutlookExcel(event)">
           📧 Gửi Outlook
         </a>
-        {% endif %}
         <!-- <button class="btn btn-sm btn-outline-secondary" id="btn-switch-to-report" type="button">
           📊 Xem báo cáo tuần
         </button> -->
@@ -315,6 +355,22 @@
       {% if excel_context %}
       <div class="card-body">
         <div class="mb-3">
+          {% if user.role == 'supervisor' %}
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <a class="btn btn-sm {% if excel_sheet == 'tl_admin' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+               href="{{ url_for('auth.profile', view='excel', date_from=date_from, date_to=date_to, excel_month=excel_month, excel_sheet='tl_admin', excel_sv_id=excel_sv_id if excel_sv_id else '') }}">
+              File 1: TL/SL ca hành chính
+            </a>
+            <a class="btn btn-sm {% if excel_sheet == 'tl_shift' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+               href="{{ url_for('auth.profile', view='excel', date_from=date_from, date_to=date_to, excel_month=excel_month, excel_sheet='tl_shift', excel_sv_id=excel_sv_id if excel_sv_id else '') }}">
+              File 2: TL/SL theo ca
+            </a>
+            <a class="btn btn-sm {% if excel_sheet == 'sv' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+               href="{{ url_for('auth.profile', view='excel', date_from=date_from, date_to=date_to, excel_month=excel_month, excel_sheet='sv', excel_sv_id=excel_sv_id if excel_sv_id else '') }}">
+              File 3: SV/DSV
+            </a>
+          </div>
+          {% endif %}
           {% if user.role in ['admin', 'manager', 'leader'] and excel_line_options %}
           <div class="d-flex flex-wrap gap-2 mb-3">
             {% for line in excel_line_options %}
@@ -357,7 +413,11 @@
               <div class="excel-note-box h-100">
                 <strong>Chú ý:</strong> Kết quả tốt ghi <strong>o</strong>, không tốt ghi <strong>x</strong>.
                 Trường hợp <strong>x</strong> ghi số trong ký hiệu △ và ghi lịch sử xử lý bên dưới.
-                <span class="text-muted d-block mt-1">Dùng cho SL/TL quản lý 1 ca</span>
+                <span class="text-muted d-block mt-1">
+                  {% if excel_sheet == 'sv' %}Dùng cho SV/DSV
+                  {% elif excel_sheet == 'tl_shift' %}Dùng cho TL/SL quản lý 3 ca
+                  {% else %}Dùng cho SL/TL quản lý 1 ca{% endif %}
+                </span>
               </div>
             </div>
           </div>
@@ -529,7 +589,7 @@
               <select class="form-select" name="gender">
                 <option value="">Không xác định</option>
                 <option value="Nam" {% if user.gender == 'Nam' %}selected{% endif %}>Nam</option>
-                <option value="feNam" {% if user.gender == 'feNam' %}selected{% endif %}>feNam</option>
+                <option value="feNam" {% if user.gender == 'feNam' %}selected{% endif %}>Nữ</option>
                 <option value="Khác" {% if user.gender == 'Khác' %}selected{% endif %}>Khác</option>
               </select>
             </div>
