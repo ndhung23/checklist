@@ -1,0 +1,139 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "shineshop": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "SHINE SHOP",
+      "options": {
+        "baseURL": "https://api.shineshop.dev/v1",
+        "apiKey": "sk-4OPwRBHrub7ImlDFlGYqbT1eb_tyfgS1EQuhLomHark"
+      },
+      "models": {
+        "codex/gpt5.5": {
+          "name": "GPT-5.5 codex shineshop",
+          "limit": {
+            "context": 272000,
+            "input": 250000,
+            "output": 200000
+          },
+          "reasoning": true,
+          "tool_call": true,
+          "attachment": true,
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "options": {
+            "reasoningEffort": "xhigh"
+          },
+          "variants": {
+            "none": {
+              "reasoningEffort": "none"
+            },
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "medium": {
+              "reasoningEffort": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high"
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh"
+            }
+          }
+        },
+        "codex/gpt-5.4": {
+          "name": "GPT-5.4 codex shineshop",
+          "limit": {
+            "context": 272000,
+            "input": 250000,
+            "output": 272000
+          },
+          "reasoning": true,
+          "tool_call": true,
+          "attachment": true,
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "options": {
+            "reasoningEffort": "medium"
+          },
+          "variants": {
+            "none": {
+              "reasoningEffort": "none"
+            },
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "medium": {
+              "reasoningEffort": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high"
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh"
+            }
+          }
+        },
+        "codex/gpt-5.4-mini": {
+          "name": "GPT-5.4 mini codex shineshop",
+          "limit": {
+            "context": 272000,
+            "input": 250000,
+            "output": 272000
+          },
+          "reasoning": true,
+          "tool_call": true,
+          "attachment": true,
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "options": {
+            "reasoningEffort": "medium"
+          },
+          "variants": {
+            "none": {
+              "reasoningEffort": "none"
+            },
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "medium": {
+              "reasoningEffort": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high"
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh"
+            }
+          }
+        }
+      }
+    }
+  },
+  "model": "shineshop/codex/gpt5.5"
+}
